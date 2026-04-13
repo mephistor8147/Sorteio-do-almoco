@@ -28,6 +28,7 @@ import {
   db, 
   googleProvider, 
   signInWithPopup, 
+  signInWithEmailAndPassword,
   onAuthStateChanged, 
   collection, 
   doc, 
@@ -155,14 +156,60 @@ const Header = ({ onAdminClick, isAuthenticated }: { onAdminClick: () => void, i
 
 const Login = ({ onLogin, onBack }: { onLogin: () => void, onBack: () => void }) => {
   const [error, setError] = useState<string | null>(null);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleGoogleLogin = async () => {
     try {
-      await signInWithPopup(auth, googleProvider);
+      console.log("Attempting Google login...");
+      const result = await signInWithPopup(auth, googleProvider);
+      console.log("Login successful:", result.user.email);
       onLogin();
     } catch (err: any) {
-      setError("Erro ao fazer login com Google.");
-      setTimeout(() => setError(null), 3000);
+      console.error("Google Login Error:", err);
+      let message = "Erro ao fazer login com Google.";
+      
+      if (err.code === 'auth/unauthorized-domain') {
+        message = "Domínio não autorizado. Adicione este domínio no Console do Firebase.";
+      } else if (err.code === 'auth/popup-blocked') {
+        message = "Popup bloqueado pelo navegador. Por favor, permita popups.";
+      } else if (err.code === 'auth/popup-closed-by-user') {
+        message = "Login cancelado pelo usuário.";
+      }
+      
+      setError(message);
+      setTimeout(() => setError(null), 5000);
+    }
+  };
+
+  const handleEmailLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email || !password) {
+      setError("Por favor, preencha todos os campos.");
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+      onLogin();
+    } catch (err: any) {
+      console.error("Email Login Error:", err);
+      let message = "Erro ao fazer login.";
+      
+      if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+        message = "E-mail ou senha incorretos.";
+      } else if (err.code === 'auth/invalid-email') {
+        message = "E-mail inválido.";
+      } else if (err.code === 'auth/too-many-requests') {
+        message = "Muitas tentativas falhas. Tente novamente mais tarde.";
+      }
+      
+      setError(message);
+      setTimeout(() => setError(null), 5000);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -177,12 +224,54 @@ const Login = ({ onLogin, onBack }: { onLogin: () => void, onBack: () => void })
           <ArrowLeft size={20} />
         </button>
         
-        <div className="text-center mb-10">
-          <div className="w-20 h-20 bg-brand-primary rounded-3xl flex items-center justify-center text-white mx-auto mb-6 shadow-xl rotate-3">
-            <Lock size={36} />
+        <div className="text-center mb-8">
+          <div className="w-16 h-16 bg-brand-primary rounded-3xl flex items-center justify-center text-white mx-auto mb-4 shadow-xl rotate-3">
+            <Lock size={28} />
           </div>
-          <h2 className="text-3xl font-light uppercase tracking-tight text-white">Acesso Restrito</h2>
-          <p className="text-brand-secondary text-[10px] font-black uppercase tracking-[0.3em] mt-2">Área Administrativa</p>
+          <h2 className="text-2xl font-light uppercase tracking-tight text-white">Acesso Restrito</h2>
+          <p className="text-brand-secondary text-[8px] font-black uppercase tracking-[0.3em] mt-1">Área Administrativa</p>
+        </div>
+
+        <form onSubmit={handleEmailLogin} className="space-y-4 mb-8">
+          <div className="space-y-1">
+            <label className="text-[8px] font-black uppercase tracking-[0.2em] text-white/40 ml-4">E-mail</label>
+            <input 
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="admin@exemplo.com"
+              className="w-full bg-white/5 border border-white/10 rounded-2xl py-3 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all text-sm"
+              required
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-[8px] font-black uppercase tracking-[0.2em] text-white/40 ml-4">Senha</label>
+            <input 
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
+              className="w-full bg-white/5 border border-white/10 rounded-2xl py-3 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all text-sm"
+              required
+            />
+          </div>
+          
+          <button 
+            type="submit"
+            disabled={isLoading}
+            className="w-full bg-brand-primary text-white font-black uppercase tracking-[0.2em] py-4 rounded-2xl shadow-lg transition-all active:scale-95 disabled:opacity-50 disabled:scale-100"
+          >
+            {isLoading ? "Entrando..." : "Entrar"}
+          </button>
+        </form>
+
+        <div className="relative mb-8">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-white/10"></div>
+          </div>
+          <div className="relative flex justify-center text-[8px] uppercase tracking-[0.3em]">
+            <span className="bg-brand-bg px-4 text-white/30">Ou continue com</span>
+          </div>
         </div>
 
         <div className="space-y-6">
@@ -191,10 +280,18 @@ const Login = ({ onLogin, onBack }: { onLogin: () => void, onBack: () => void })
             className="w-full bg-white text-brand-bg font-black uppercase tracking-[0.2em] py-4 rounded-2xl shadow-lg flex items-center justify-center gap-3 transition-all active:scale-95"
           >
             <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5" />
-            Entrar com Google
+            Google
           </button>
           
-          {error && <p className="text-red-400 text-[10px] font-bold text-center uppercase tracking-widest mt-2">{error}</p>}
+          {error && (
+            <motion.p 
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="text-red-400 text-[10px] font-bold text-center uppercase tracking-widest mt-2"
+            >
+              {error}
+            </motion.p>
+          )}
           
           <p className="text-white/30 text-[8px] text-center uppercase tracking-widest leading-relaxed">
             Apenas administradores autorizados têm acesso às configurações do sistema.
