@@ -1,0 +1,68 @@
+{
+  "entities": {
+    "Employee": {
+      "title": "Employee",
+      "description": "An employee in the gourmet queue.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the employee."
+        },
+        "name": {
+          "type": "string",
+          "description": "Full name of the employee."
+        },
+        "position": {
+          "type": "number",
+          "description": "Current position in the queue."
+        }
+      },
+      "required": ["id", "name", "position"]
+    },
+    "AppSettings": {
+      "title": "AppSettings",
+      "description": "Global application settings.",
+      "type": "object",
+      "properties": {
+        "heroTitleLine1": {
+          "type": "string"
+        },
+        "heroTitleLine2": {
+          "type": "string"
+        },
+        "heroSubtitle": {
+          "type": "string"
+        },
+        "heroDescription": {
+          "type": "string"
+        },
+        "lotteryTime": {
+          "type": "string",
+          "format": "time"
+        },
+        "lotteryDays": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "lastLotteryDate": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["heroTitleLine1", "heroTitleLine2", "heroSubtitle", "heroDescription", "lotteryTime", "lotteryDays"]
+    }
+  },
+  "firestore": {
+    "/queue/{employeeId}": {
+      "schema": "Employee",
+      "description": "Collection of employees in the queue."
+    },
+    "/settings/global": {
+      "schema": "AppSettings",
+      "description": "Global application settings document."
+    }
+  }
+}

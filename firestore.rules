@@ -1,0 +1,102 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: queue
+    // Document ID: {employeeId}
+    // Fields:
+    //   - id: string (required) - Unique ID
+    //   - name: string (required, 1-100 chars) - Employee name
+    //   - position: number (required, positive) - Queue position
+    //
+    // Collection: settings
+    // Document ID: global
+    // Fields:
+    //   - heroTitleLine1: string (required, 1-50 chars)
+    //   - heroTitleLine2: string (required, 1-50 chars)
+    //   - heroSubtitle: string (required, 1-50 chars)
+    //   - heroDescription: string (required, 1-500 chars)
+    //   - lotteryTime: string (required, HH:mm format)
+    //   - lotteryDays: list (required, 0-6)
+    //   - lastLotteryDate: string (optional, ISO format)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+             (request.auth.token.email == "l2xbrasil@gmail.com" && request.auth.token.email_verified == true);
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function isValidString(field, min, max) {
+      return request.resource.data[field] is string && 
+             request.resource.data[field].size() >= min && 
+             request.resource.data[field].size() <= max;
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidEmployee() {
+      return hasRequiredFields(['id', 'name', 'position']) &&
+             hasOnlyAllowedFields(['id', 'name', 'position']) &&
+             request.resource.data.id is string &&
+             isValidString('name', 1, 100) &&
+             request.resource.data.position is number &&
+             request.resource.data.position >= 0;
+    }
+
+    function isValidSettings() {
+      return hasRequiredFields(['heroTitleLine1', 'heroTitleLine2', 'heroSubtitle', 'heroDescription', 'lotteryTime', 'lotteryDays']) &&
+             hasOnlyAllowedFields(['heroTitleLine1', 'heroTitleLine2', 'heroSubtitle', 'heroDescription', 'lotteryTime', 'lotteryDays', 'lastLotteryDate']) &&
+             isValidString('heroTitleLine1', 1, 50) &&
+             isValidString('heroTitleLine2', 1, 50) &&
+             isValidString('heroSubtitle', 1, 50) &&
+             isValidString('heroDescription', 1, 500) &&
+             request.resource.data.lotteryTime is string &&
+             request.resource.data.lotteryTime.matches('^([01][0-9]|2[0-3]):[0-5][0-9]$') &&
+             request.resource.data.lotteryDays is list;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /queue/{employeeId} {
+      allow read: if true;
+      allow create, update: if isAdmin() && isValidEmployee();
+      allow delete: if isAdmin();
+    }
+
+    match /settings/global {
+      allow read: if true;
+      allow create, update: if isAdmin() && isValidSettings();
+      allow delete: if isAdmin();
+    }
+
+    // Default deny
+    match /{path=**} {
+      allow read, write: if false;
+    }
+  }
+}
