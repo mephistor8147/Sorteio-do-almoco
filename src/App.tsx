@@ -73,6 +73,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   lastLotteryDate: null
 };
 
+const ADMIN_EMAILS = ['l2xbrasil@gmail.com', 'Sorteioadm@sorteio.com'];
+
 const MOCK_QUEUE: Employee[] = [
   { id: '1', name: 'Ricardo Oliveira', position: 1 },
   { id: '2', name: 'Ana Beatriz Silva', position: 2 },
@@ -955,7 +957,7 @@ function AppContent() {
   // Auth Listener
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-      const isAdminUser = user?.email === 'l2xbrasil@gmail.com';
+      const isAdminUser = user?.email && ADMIN_EMAILS.includes(user.email);
       
       if (user && isAdminUser) {
         setIsAuthenticated(true);
@@ -993,7 +995,7 @@ function AppContent() {
       } else {
         // If settings don't exist in Firestore, we use DEFAULT_SETTINGS (already set as initial state)
         // We only attempt to initialize the document if the user is the authorized admin
-        if (auth.currentUser?.email === 'l2xbrasil@gmail.com') {
+        if (auth.currentUser?.email && ADMIN_EMAILS.includes(auth.currentUser.email)) {
           setDoc(doc(db, 'settings', 'global'), DEFAULT_SETTINGS).catch(err => {
             handleFirestoreError(err, OperationType.WRITE, 'settings/global');
           });
@@ -1008,7 +1010,7 @@ function AppContent() {
   useEffect(() => {
     const checkLottery = () => {
       // Only the authorized admin can trigger the automatic lottery write
-      if (auth.currentUser?.email !== 'l2xbrasil@gmail.com') return;
+      if (!auth.currentUser?.email || !ADMIN_EMAILS.includes(auth.currentUser.email)) return;
       
       const now = new Date();
       const currentDay = now.getDay();
@@ -1031,7 +1033,7 @@ function AppContent() {
   }, [settings, queue, isAuthenticated]);
 
   const handleLogin = () => {
-    if (auth.currentUser?.email === 'l2xbrasil@gmail.com') {
+    if (auth.currentUser?.email && ADMIN_EMAILS.includes(auth.currentUser.email)) {
       setView('admin');
     } else {
       // If someone else logs in, sign them out and show error
