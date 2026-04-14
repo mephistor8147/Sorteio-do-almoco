@@ -65,6 +65,7 @@ interface AppSettings {
   heroTitleLine2: string;
   heroSubtitle: string;
   heroDescription: string;
+  heroBackgroundImage?: string;
   lotteryTime: string;
   lotteryDays: number[];
   lastLotteryDate: string | null;
@@ -88,6 +89,7 @@ interface AdminUser {
   id: string;
   name: string;
   email: string;
+  role: 'admin' | 'coordinator';
   password?: string;
   photoUrl?: string;
   isActive: boolean;
@@ -100,6 +102,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   heroTitleLine2: 'AMAZÔNICO',
   heroSubtitle: 'Tropical Dining',
   heroDescription: 'Bem-vindo ao Edifício Amazonas. Desfrute de uma experiência gastronômica única inspirada na natureza.',
+  heroBackgroundImage: '',
   lotteryTime: '11:00',
   lotteryDays: [1, 2, 3, 4, 5], // Seg-Sex
   lastLotteryDate: null,
@@ -416,6 +419,7 @@ const AdminPanel = ({
   onAddAdmin,
   onUpdateAdmin,
   onDeleteAdmin,
+  currentUserRole,
   isLoadingQueue,
   isLoadingHistory,
   isLoadingAdmins,
@@ -436,9 +440,10 @@ const AdminPanel = ({
   onClearHistory: () => void,
   onViewPublic: () => void,
   admins: AdminUser[],
-  onAddAdmin: (name: string, email: string, password?: string, photoUrl?: string) => void,
+  onAddAdmin: (name: string, email: string, role: 'admin' | 'coordinator', password?: string, photoUrl?: string) => void,
   onUpdateAdmin: (id: string, updates: Partial<AdminUser>) => void,
   onDeleteAdmin: (id: string) => void,
+  currentUserRole: 'admin' | 'coordinator' | null,
   isLoadingQueue: boolean,
   isLoadingHistory: boolean,
   isLoadingAdmins: boolean,
@@ -448,13 +453,16 @@ const AdminPanel = ({
   const [newPhotoUrl, setNewPhotoUrl] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [isHeroUploading, setIsHeroUploading] = useState(false);
   
   const [adminName, setAdminName] = useState('');
   const [adminEmail, setAdminEmail] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
   const [adminPhotoUrl, setAdminPhotoUrl] = useState('');
+  const [adminRole, setAdminRole] = useState<'admin' | 'coordinator'>('coordinator');
   const [editingAdminId, setEditingAdminId] = useState<string | null>(null);
   const [isAdminUploading, setIsAdminUploading] = useState(false);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   const [activeTab, setActiveTab] = useState<'queue' | 'settings' | 'lottery' | 'database' | 'history' | 'admins'>('queue');
 
@@ -526,6 +534,25 @@ const AdminPanel = ({
     };
     reader.readAsDataURL(file);
   };
+
+  const handleHeroBackgroundUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsHeroUploading(true);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64 = event.target?.result as string;
+      setTempSettings({ ...tempSettings, heroBackgroundImage: base64 });
+      setIsHeroUploading(false);
+    };
+    reader.onerror = () => {
+      setIsHeroUploading(false);
+      alert("Erro ao ler arquivo.");
+    };
+    reader.readAsDataURL(file);
+  };
+
   const [expandedHistory, setExpandedHistory] = useState<string | null>(null);
   const [tempSettings, setTempSettings] = useState<AppSettings>(settings);
   const [dbStatus, setDbStatus] = useState<{ type: 'success' | 'error', message: string } | null>(null);
@@ -697,23 +724,27 @@ const AdminPanel = ({
             Configurações
           </button>
           <button 
-            onClick={() => setActiveTab('database')}
-            className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'database' ? 'bg-brand-primary text-white' : 'text-white/40 hover:text-white'}`}
-          >
-            Banco de Dados
-          </button>
-          <button 
             onClick={() => setActiveTab('history')}
             className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'history' ? 'bg-brand-primary text-white' : 'text-white/40 hover:text-white'}`}
           >
             Histórico
           </button>
-          <button 
-            onClick={() => setActiveTab('admins')}
-            className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'admins' ? 'bg-brand-primary text-white' : 'text-white/40 hover:text-white'}`}
-          >
-            Administradores
-          </button>
+          {currentUserRole === 'admin' && (
+            <>
+              <button 
+                onClick={() => setActiveTab('database')}
+                className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'database' ? 'bg-brand-primary text-white' : 'text-white/40 hover:text-white'}`}
+              >
+                Banco de Dados
+              </button>
+              <button 
+                onClick={() => setActiveTab('admins')}
+                className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'admins' ? 'bg-brand-primary text-white' : 'text-white/40 hover:text-white'}`}
+              >
+                Administradores
+              </button>
+            </>
+          )}
         </div>
 
         {activeTab === 'queue' && (
@@ -1282,6 +1313,17 @@ const AdminPanel = ({
                     />
                   </div>
                   <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-4">Nível de Acesso</label>
+                    <select 
+                      value={adminRole}
+                      onChange={(e) => setAdminRole(e.target.value as 'admin' | 'coordinator')}
+                      className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all appearance-none"
+                    >
+                      <option value="admin" className="bg-brand-bg">Administrador (Full)</option>
+                      <option value="coordinator" className="bg-brand-bg">Coordenador (Limitado)</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
                     <label className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-4">Foto do Administrador</label>
                     <div className="flex items-center gap-4">
                       <div className="w-16 h-16 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center overflow-hidden relative group">
@@ -1327,12 +1369,13 @@ const AdminPanel = ({
                         onUpdateAdmin(editingAdminId, { 
                           name: adminName, 
                           email: adminEmail, 
+                          role: adminRole,
                           password: adminPassword || undefined,
                           photoUrl: adminPhotoUrl || undefined
                         });
                         setEditingAdminId(null);
                       } else {
-                        onAddAdmin(adminName, adminEmail, adminPassword, adminPhotoUrl);
+                        onAddAdmin(adminName, adminEmail, adminRole, adminPassword, adminPhotoUrl);
                       }
                       setAdminName('');
                       setAdminEmail('');
@@ -1386,9 +1429,14 @@ const AdminPanel = ({
                         <div>
                           <h4 className="text-white font-bold uppercase tracking-tight">{admin.name}</h4>
                           <p className="text-brand-secondary text-[10px] font-black uppercase tracking-widest mt-1">{admin.email}</p>
-                          <span className={`text-[8px] font-black uppercase tracking-widest mt-2 block ${admin.isActive ? 'text-green-400' : 'text-red-400'}`}>
-                            {admin.isActive ? 'Ativo' : 'Inativo'}
-                          </span>
+                          <div className="flex items-center gap-2 mt-2">
+                            <span className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full ${admin.isActive ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+                              {admin.isActive ? 'Ativo' : 'Inativo'}
+                            </span>
+                            <span className="text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-white/10 text-white/60">
+                              {admin.role === 'admin' ? 'Administrador' : 'Coordenador'}
+                            </span>
+                          </div>
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
@@ -1404,6 +1452,7 @@ const AdminPanel = ({
                             setEditingAdminId(admin.id);
                             setAdminName(admin.name);
                             setAdminEmail(admin.email);
+                            setAdminRole(admin.role || 'coordinator');
                             setAdminPassword(admin.password || '');
                             setAdminPhotoUrl(admin.photoUrl || '');
                             setActiveTab('admins');
@@ -1413,16 +1462,27 @@ const AdminPanel = ({
                         >
                           <Edit2 size={16} />
                         </button>
-                        <button 
-                          onClick={() => {
-                            if (confirm(`Excluir administrador ${admin.name}?`)) {
-                              onDeleteAdmin(admin.id);
-                            }
-                          }}
-                          className="w-10 h-10 rounded-xl glass flex items-center justify-center text-red-400 hover:bg-red-500 hover:text-white transition-all"
-                        >
-                          <Trash2 size={16} />
-                        </button>
+                        <div className="relative">
+                          <button 
+                            onClick={() => {
+                              if (deleteConfirmId === admin.id) {
+                                onDeleteAdmin(admin.id);
+                                setDeleteConfirmId(null);
+                              } else {
+                                setDeleteConfirmId(admin.id);
+                                setTimeout(() => setDeleteConfirmId(null), 3000);
+                              }
+                            }}
+                            className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${deleteConfirmId === admin.id ? 'bg-red-500 text-white' : 'glass text-red-400 hover:bg-red-500 hover:text-white'}`}
+                          >
+                            {deleteConfirmId === admin.id ? <Check size={16} /> : <Trash2 size={16} />}
+                          </button>
+                          {deleteConfirmId === admin.id && (
+                            <div className="absolute bottom-full right-0 mb-2 bg-red-500 text-white text-[8px] font-black uppercase tracking-widest py-1 px-2 rounded whitespace-nowrap animate-bounce">
+                              Confirmar?
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
                   ))
@@ -1490,6 +1550,44 @@ const AdminPanel = ({
               </h3>
               
               <div className="space-y-6">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-4">Imagem de Fundo do Card</label>
+                  <div className="flex items-center gap-4">
+                    <div className="w-32 h-20 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center overflow-hidden relative group">
+                      {tempSettings.heroBackgroundImage ? (
+                        <>
+                          <img src={tempSettings.heroBackgroundImage} alt="Preview" className="w-full h-full object-cover" />
+                          <button 
+                            onClick={() => setTempSettings({ ...tempSettings, heroBackgroundImage: '' })}
+                            className="absolute inset-0 bg-red-500/80 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white"
+                          >
+                            <X size={20} />
+                          </button>
+                        </>
+                      ) : (
+                        <Camera size={24} className="text-white/20" />
+                      )}
+                      {isHeroUploading && (
+                        <div className="absolute inset-0 bg-brand-bg/60 flex items-center justify-center">
+                          <div className="w-5 h-5 border-2 border-brand-primary/30 border-t-brand-primary rounded-full animate-spin" />
+                        </div>
+                      )}
+                    </div>
+                    <label className="flex-1">
+                      <div className="w-full bg-white/5 border border-white/10 border-dashed rounded-2xl py-4 px-6 text-white/40 text-[10px] font-black uppercase tracking-widest text-center cursor-pointer hover:bg-white/10 hover:border-brand-primary/30 transition-all flex items-center justify-center gap-2">
+                        <Upload size={14} />
+                        {tempSettings.heroBackgroundImage ? 'Trocar Imagem' : 'Enviar Imagem'}
+                      </div>
+                      <input 
+                        type="file"
+                        accept="image/*"
+                        onChange={handleHeroBackgroundUpload}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+                </div>
+
                 <div className="space-y-2">
                   <label className="text-[10px] font-black uppercase tracking-[0.2em] text-white/40 ml-4">Subtítulo (Tag)</label>
                   <input 
@@ -1599,6 +1697,11 @@ const HeroCard = ({ queueCount, settings }: { queueCount: number, settings: AppS
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       className="mx-6 p-8 md:p-12 rounded-[40px] bg-brand-card relative overflow-hidden hero-gradient border border-white/5 shadow-2xl"
+      style={settings.heroBackgroundImage ? {
+        backgroundImage: `linear-gradient(to right, rgba(10, 15, 12, 0.95), rgba(10, 15, 12, 0.4)), url(${settings.heroBackgroundImage})`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center'
+      } : {}}
     >
       <div className="relative z-10">
         <div className="flex items-center gap-2 mb-6">
@@ -1691,6 +1794,7 @@ const QueueItem = React.forwardRef<HTMLDivElement, { employee: Employee, isFirst
 function AppContent() {
   const [view, setView] = useState<'public' | 'login' | 'admin'>('public');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [currentUserRole, setCurrentUserRole] = useState<'admin' | 'coordinator' | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [notifications, setNotifications] = useState<{ id: string, message: string, type: 'success' | 'error' | 'info', description?: string }[]>([]);
 
@@ -1722,9 +1826,16 @@ function AppContent() {
       
       if (user && isAdminUser) {
         setIsAuthenticated(true);
+        if (isHardcodedAdmin) {
+          setCurrentUserRole('admin');
+        } else {
+          const dynamicAdmin = admins.find(a => a.email.toLowerCase() === user.email?.toLowerCase());
+          setCurrentUserRole(dynamicAdmin?.role || 'coordinator');
+        }
         setView(prev => prev === 'login' ? 'admin' : prev);
       } else {
         setIsAuthenticated(false);
+        setCurrentUserRole(null);
         if (view === 'admin') setView('public');
         // If a non-admin user is logged in, sign them out to prevent permission errors
         if (user && !isAdminUser && !isLoadingAdmins) {
@@ -2044,24 +2155,25 @@ function AppContent() {
     }
   };
 
-  const addAdmin = async (name: string, email: string, password?: string, photoUrl?: string) => {
-    const id = Math.random().toString(36).substr(2, 9);
+  const addAdmin = async (name: string, email: string, role: 'admin' | 'coordinator', password?: string, photoUrl?: string) => {
+    const adminId = email.toLowerCase();
     const newAdmin: AdminUser = {
-      id,
+      id: adminId,
       name,
       email,
+      role,
       isActive: true,
       createdAt: new Date().toISOString(),
       ...(password ? { password } : {}),
       ...(photoUrl ? { photoUrl } : {})
     };
     try {
-      await setDoc(doc(db, 'admins', id), newAdmin);
+      await setDoc(doc(db, 'admins', adminId), newAdmin);
       addNotification(`Administrador ${name} adicionado!`, 'success');
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
       addNotification('Erro ao adicionar administrador.', 'error', errMsg);
-      handleFirestoreError(err, OperationType.CREATE, `admins/${id}`);
+      handleFirestoreError(err, OperationType.CREATE, `admins/${adminId}`);
     }
   };
 
@@ -2168,6 +2280,7 @@ function AppContent() {
           onAddAdmin={addAdmin}
           onUpdateAdmin={updateAdmin}
           onDeleteAdmin={deleteAdmin}
+          currentUserRole={currentUserRole}
           isLoadingQueue={isLoadingQueue}
           isLoadingHistory={isLoadingHistory}
           isLoadingAdmins={isLoadingAdmins}
