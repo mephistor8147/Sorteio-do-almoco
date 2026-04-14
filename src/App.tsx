@@ -458,16 +458,36 @@ const AdminPanel = ({
   const [activeTab, setActiveTab] = useState<'queue' | 'settings' | 'lottery' | 'database' | 'history' | 'admins'>('queue');
 
   const [isShufflingLocal, setIsShufflingLocal] = useState(false);
+  const [shuffleDisplay, setShuffleDisplay] = useState<Employee | null>(null);
 
   const handleShuffleClick = async () => {
-    console.log('Botão Sortear Agora clicado');
+    const activeEmployees = queue.filter(e => e.isActive);
+    if (activeEmployees.length < 2) return;
+
     setIsShufflingLocal(true);
+    
+    // Visual shuffle animation
+    let iterations = 0;
+    const maxIterations = 15;
+    const interval = setInterval(() => {
+      const randomIndex = Math.floor(Math.random() * activeEmployees.length);
+      setShuffleDisplay(activeEmployees[randomIndex]);
+      iterations++;
+      if (iterations >= maxIterations) {
+        clearInterval(interval);
+      }
+    }, 100);
+
     try {
       await onShuffle();
     } catch (e) {
       console.error('Erro ao chamar onShuffle:', e);
+    } finally {
+      setTimeout(() => {
+        setIsShufflingLocal(false);
+        setShuffleDisplay(null);
+      }, 1600);
     }
-    setIsShufflingLocal(false);
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -910,7 +930,45 @@ const AdminPanel = ({
             </div>
 
             <div className="space-y-6">
-              <div className="glass p-8 rounded-[40px] space-y-6 text-center">
+              <div className="glass p-8 rounded-[40px] space-y-6 text-center relative overflow-hidden">
+                {isShufflingLocal && (
+                  <motion.div 
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="absolute inset-0 bg-brand-bg/90 backdrop-blur-sm z-20 flex flex-col items-center justify-center p-6"
+                  >
+                    <div className="relative mb-6">
+                      <motion.div 
+                        animate={{ rotate: 360 }}
+                        transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+                        className="w-24 h-24 border-b-2 border-brand-secondary rounded-full"
+                      />
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <AnimatePresence mode="wait">
+                          {shuffleDisplay && (
+                            <motion.div
+                              key={shuffleDisplay.id}
+                              initial={{ scale: 0.5, opacity: 0 }}
+                              animate={{ scale: 1, opacity: 1 }}
+                              exit={{ scale: 1.5, opacity: 0 }}
+                              className="w-16 h-16 rounded-2xl bg-white/10 overflow-hidden border border-white/20"
+                            >
+                              {shuffleDisplay.photoUrl ? (
+                                <img src={shuffleDisplay.photoUrl} alt="" className="w-full h-full object-cover" />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center text-xl font-bold text-white">
+                                  {shuffleDisplay.name.charAt(0)}
+                                </div>
+                              )}
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+                    </div>
+                    <h4 className="text-brand-secondary font-black uppercase tracking-[0.3em] text-xs animate-pulse">Embaralhando...</h4>
+                  </motion.div>
+                )}
+
                 <div className="w-20 h-20 bg-brand-secondary/10 rounded-3xl flex items-center justify-center text-brand-secondary mx-auto">
                   <Dices size={40} />
                 </div>
@@ -920,15 +978,11 @@ const AdminPanel = ({
                 </div>
                 <button 
                   onClick={handleShuffleClick}
-                  disabled={isShufflingLocal}
+                  disabled={isShufflingLocal || queue.filter(e => e.isActive).length < 2}
                   className="w-full bg-brand-secondary hover:bg-brand-secondary/80 text-brand-bg font-black uppercase tracking-[0.2em] py-4 rounded-2xl shadow-lg shadow-brand-secondary/20 transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {isShufflingLocal ? (
-                    <div className="w-5 h-5 border-2 border-brand-bg/30 border-t-brand-bg rounded-full animate-spin" />
-                  ) : (
-                    <Sparkles size={18} />
-                  )}
-                  {isShufflingLocal ? 'Sorteando...' : 'Sortear Agora'}
+                  <Sparkles size={18} />
+                  Sortear Agora
                 </button>
                 {queue.filter(e => e.isActive).length < 2 && (
                   <p className="text-red-400/60 text-[8px] font-bold uppercase tracking-widest animate-pulse">
@@ -1678,11 +1732,13 @@ function AppContent() {
   useEffect(() => {
     setIsLoadingAdmins(true);
     const unsubscribe = onSnapshot(collection(db, 'admins'), (snapshot) => {
+      console.log('Admins snapshot received. Size:', snapshot.size);
       const items = snapshot.docs.map(doc => doc.data() as AdminUser);
       setAdmins(items);
       setIsLoadingAdmins(false);
     }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'admins');
+      console.error('Error fetching admins:', error);
+      // Don't throw here to avoid crashing the app, just log and stop loading
       setIsLoadingAdmins(false);
     });
     return () => unsubscribe();
