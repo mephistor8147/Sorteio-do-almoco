@@ -26,7 +26,9 @@ import {
   X,
   ChevronDown,
   Camera,
-  Edit2
+  Edit2,
+  Zap,
+  Timer
 } from 'lucide-react';
 import { 
   auth, 
@@ -1736,6 +1738,80 @@ const HeroCard = ({ queueCount, settings }: { queueCount: number, settings: AppS
   );
 };
 
+const LotteryCountdownCard = ({ settings }: { settings: AppSettings }) => {
+  const [timeLeft, setTimeLeft] = useState<string | null>(null);
+  const [isActive, setIsActive] = useState(false);
+
+  useEffect(() => {
+    const calculateTime = () => {
+      const now = new Date();
+      const currentDay = now.getDay();
+      const isLotteryDay = (settings.lotteryDays || []).includes(currentDay);
+      const todayStr = now.toISOString().split('T')[0];
+      const alreadyHappened = settings.lastLotteryDate === todayStr;
+
+      if (!isLotteryDay || alreadyHappened) {
+        setIsActive(false);
+        setTimeLeft(null);
+        return;
+      }
+
+      const [hours, minutes] = (settings.lotteryTime || '11:00').split(':').map(Number);
+      const target = new Date();
+      target.setHours(hours, minutes, 0, 0);
+
+      const diff = target.getTime() - now.getTime();
+
+      if (diff <= 0) {
+        setIsActive(false);
+        setTimeLeft(null);
+      } else {
+        setIsActive(true);
+        const h = Math.floor(diff / 3600000);
+        const m = Math.floor((diff % 3600000) / 60000);
+        const s = Math.floor((diff % 60000) / 1000);
+        setTimeLeft(`${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`);
+      }
+    };
+
+    calculateTime();
+    const timer = setInterval(calculateTime, 1000);
+    return () => clearInterval(timer);
+  }, [settings]);
+
+  if (!isActive || !timeLeft) return null;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      className="mx-6 mt-6 p-6 rounded-[32px] bg-brand-primary/10 border border-brand-primary/20 flex items-center justify-between overflow-hidden relative group"
+    >
+      <div className="relative z-10 flex items-center gap-4">
+        <div className="w-12 h-12 rounded-2xl bg-brand-primary flex items-center justify-center text-white shadow-lg shadow-brand-primary/20 group-hover:scale-110 transition-transform duration-500">
+          <Zap size={24} className="fill-current" />
+        </div>
+        <div>
+          <h4 className="text-white font-bold uppercase tracking-tight text-sm">Sorteio Automático</h4>
+          <p className="text-brand-primary text-[10px] font-black uppercase tracking-widest">A fila será reorganizada em breve</p>
+        </div>
+      </div>
+      
+      <div className="relative z-10 text-right">
+        <div className="flex items-center gap-2 justify-end text-brand-primary mb-1">
+          <Timer size={12} />
+          <span className="text-[8px] font-black uppercase tracking-widest">Contagem Regressiva</span>
+        </div>
+        <div className="text-3xl md:text-4xl font-black text-white tracking-tighter tabular-nums leading-none">
+          {timeLeft}
+        </div>
+      </div>
+
+      <div className="absolute -bottom-12 -right-12 w-48 h-48 bg-brand-primary/10 rounded-full blur-3xl group-hover:bg-brand-primary/20 transition-colors duration-700" />
+    </motion.div>
+  );
+};
+
 const QueueItem = React.forwardRef<HTMLDivElement, { employee: Employee, isFirst: boolean }>(
   ({ employee, isFirst }, ref) => (
     <motion.div 
@@ -2297,7 +2373,10 @@ function AppContent() {
           />
           
           <main className="max-w-3xl mx-auto space-y-12">
-            <HeroCard queueCount={queue.length} settings={settings} />
+            <div className="space-y-0">
+              <HeroCard queueCount={queue.length} settings={settings} />
+              <LotteryCountdownCard settings={settings} />
+            </div>
             
             <section className="px-6 space-y-8">
               <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
