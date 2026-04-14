@@ -111,6 +111,37 @@
         }
       },
       "required": ["id", "timestamp", "winnerName", "winnerId", "fullList"]
+    },
+    "AdminUser": {
+      "title": "AdminUser",
+      "description": "An administrator user.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "email": {
+          "type": "string",
+          "format": "email"
+        },
+        "password": {
+          "type": "string"
+        },
+        "photoUrl": {
+          "type": "string"
+        },
+        "isActive": {
+          "type": "boolean"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["id", "name", "email", "isActive", "createdAt"]
     }
   },
   "firestore": {
@@ -125,6 +156,10 @@
     "/history/{historyId}": {
       "schema": "LotteryHistory",
       "description": "Collection of past lottery draws."
+    },
+    "/admins/{adminId}": {
+      "schema": "AdminUser",
+      "description": "Collection of administrator users."
     }
   }
 }

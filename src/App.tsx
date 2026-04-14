@@ -84,6 +84,16 @@ interface LotteryHistory {
   fullList: { id: string; name: string; photoUrl?: string }[];
 }
 
+interface AdminUser {
+  id: string;
+  name: string;
+  email: string;
+  password?: string;
+  photoUrl?: string;
+  isActive: boolean;
+  createdAt: string;
+}
+
 // --- Constants ---
 const DEFAULT_SETTINGS: AppSettings = {
   heroTitleLine1: 'SABOR',
@@ -402,8 +412,13 @@ const AdminPanel = ({
   history,
   onClearHistory,
   onViewPublic,
+  admins,
+  onAddAdmin,
+  onUpdateAdmin,
+  onDeleteAdmin,
   isLoadingQueue,
   isLoadingHistory,
+  isLoadingAdmins,
   isLoadingSettings
 }: { 
   onLogout: () => void, 
@@ -420,15 +435,27 @@ const AdminPanel = ({
   history: LotteryHistory[],
   onClearHistory: () => void,
   onViewPublic: () => void,
+  admins: AdminUser[],
+  onAddAdmin: (name: string, email: string, password?: string, photoUrl?: string) => void,
+  onUpdateAdmin: (id: string, updates: Partial<AdminUser>) => void,
+  onDeleteAdmin: (id: string) => void,
   isLoadingQueue: boolean,
   isLoadingHistory: boolean,
+  isLoadingAdmins: boolean,
   isLoadingSettings: boolean
 }) => {
   const [newName, setNewName] = useState('');
   const [newPhotoUrl, setNewPhotoUrl] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'queue' | 'settings' | 'lottery' | 'database' | 'history'>('queue');
+  
+  const [adminName, setAdminName] = useState('');
+  const [adminEmail, setAdminEmail] = useState('');
+  const [adminPassword, setAdminPassword] = useState('');
+  const [adminPhotoUrl, setAdminPhotoUrl] = useState('');
+  const [editingAdminId, setEditingAdminId] = useState<string | null>(null);
+
+  const [activeTab, setActiveTab] = useState<'queue' | 'settings' | 'lottery' | 'database' | 'history' | 'admins'>('queue');
 
   const [isShufflingLocal, setIsShufflingLocal] = useState(false);
 
@@ -641,6 +668,12 @@ const AdminPanel = ({
             className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'history' ? 'bg-brand-primary text-white' : 'text-white/40 hover:text-white'}`}
           >
             Histórico
+          </button>
+          <button 
+            onClick={() => setActiveTab('admins')}
+            className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'admins' ? 'bg-brand-primary text-white' : 'text-white/40 hover:text-white'}`}
+          >
+            Administradores
           </button>
         </div>
 
@@ -1135,6 +1168,181 @@ const AdminPanel = ({
           </div>
         )}
 
+        {activeTab === 'admins' && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div className="md:col-span-2 space-y-8">
+              <div className="glass p-6 md:p-8 rounded-[40px] space-y-6">
+                <h3 className="text-xl font-bold uppercase tracking-tight flex items-center gap-3">
+                  <UserPlus className="text-brand-secondary" size={20} /> 
+                  {editingAdminId ? 'Editar Administrador' : 'Criar Administrador'}
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-4">Nome</label>
+                    <input 
+                      type="text"
+                      value={adminName}
+                      onChange={(e) => setAdminName(e.target.value)}
+                      placeholder="Nome completo"
+                      className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-4">Email</label>
+                    <input 
+                      type="email"
+                      value={adminEmail}
+                      onChange={(e) => setAdminEmail(e.target.value)}
+                      placeholder="email@exemplo.com"
+                      className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-4">Senha</label>
+                    <input 
+                      type="password"
+                      value={adminPassword}
+                      onChange={(e) => setAdminPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-4">URL da Foto (Opcional)</label>
+                    <input 
+                      type="text"
+                      value={adminPhotoUrl}
+                      onChange={(e) => setAdminPhotoUrl(e.target.value)}
+                      placeholder="https://..."
+                      className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all"
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-3">
+                  <button 
+                    onClick={() => {
+                      if (!adminName || !adminEmail) return;
+                      if (editingAdminId) {
+                        onUpdateAdmin(editingAdminId, { 
+                          name: adminName, 
+                          email: adminEmail, 
+                          password: adminPassword || undefined,
+                          photoUrl: adminPhotoUrl || undefined
+                        });
+                        setEditingAdminId(null);
+                      } else {
+                        onAddAdmin(adminName, adminEmail, adminPassword, adminPhotoUrl);
+                      }
+                      setAdminName('');
+                      setAdminEmail('');
+                      setAdminPassword('');
+                      setAdminPhotoUrl('');
+                    }}
+                    className="flex-1 bg-brand-primary text-white font-black uppercase tracking-widest py-4 rounded-2xl shadow-lg transition-all active:scale-95"
+                  >
+                    {editingAdminId ? 'Salvar Alterações' : 'Criar Administrador'}
+                  </button>
+                  {editingAdminId && (
+                    <button 
+                      onClick={() => {
+                        setEditingAdminId(null);
+                        setAdminName('');
+                        setAdminEmail('');
+                        setAdminPassword('');
+                        setAdminPhotoUrl('');
+                      }}
+                      className="px-8 glass text-white font-black uppercase tracking-widest py-4 rounded-2xl transition-all active:scale-95"
+                    >
+                      Cancelar
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <h3 className="text-xl font-bold uppercase tracking-tight flex items-center gap-3">
+                  <Users className="text-brand-secondary" size={20} /> Lista de Administradores
+                </h3>
+                {isLoadingAdmins ? (
+                  <div className="glass p-12 rounded-[40px] text-center">
+                    <div className="w-8 h-8 border-4 border-brand-primary/30 border-t-brand-primary rounded-full animate-spin mx-auto" />
+                  </div>
+                ) : admins.length === 0 ? (
+                  <div className="glass p-12 rounded-[40px] text-center text-white/40 uppercase tracking-widest text-[10px] font-black">
+                    Nenhum administrador cadastrado.
+                  </div>
+                ) : (
+                  admins.map((admin) => (
+                    <div key={admin.id} className={`glass p-6 rounded-[32px] flex items-center justify-between group transition-all ${!admin.isActive ? 'opacity-50' : ''}`}>
+                      <div className="flex items-center gap-6">
+                        <div className="w-16 h-16 rounded-2xl bg-white/5 flex items-center justify-center overflow-hidden">
+                          {admin.photoUrl ? (
+                            <img src={admin.photoUrl} alt={admin.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                          ) : (
+                            <span className="text-xl font-bold text-white/20">{admin.name.charAt(0)}</span>
+                          )}
+                        </div>
+                        <div>
+                          <h4 className="text-white font-bold uppercase tracking-tight">{admin.name}</h4>
+                          <p className="text-brand-secondary text-[10px] font-black uppercase tracking-widest mt-1">{admin.email}</p>
+                          <span className={`text-[8px] font-black uppercase tracking-widest mt-2 block ${admin.isActive ? 'text-green-400' : 'text-red-400'}`}>
+                            {admin.isActive ? 'Ativo' : 'Inativo'}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button 
+                          onClick={() => onUpdateAdmin(admin.id, { isActive: !admin.isActive })}
+                          className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${admin.isActive ? 'bg-green-500/10 text-green-400 hover:bg-green-500 hover:text-white' : 'bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white'}`}
+                          title={admin.isActive ? 'Desativar' : 'Ativar'}
+                        >
+                          {admin.isActive ? <Check size={16} /> : <X size={16} />}
+                        </button>
+                        <button 
+                          onClick={() => {
+                            setEditingAdminId(admin.id);
+                            setAdminName(admin.name);
+                            setAdminEmail(admin.email);
+                            setAdminPassword(admin.password || '');
+                            setAdminPhotoUrl(admin.photoUrl || '');
+                            setActiveTab('admins');
+                            window.scrollTo({ top: 0, behavior: 'smooth' });
+                          }}
+                          className="w-10 h-10 rounded-xl glass flex items-center justify-center text-blue-400 hover:bg-blue-500 hover:text-white transition-all"
+                        >
+                          <Edit2 size={16} />
+                        </button>
+                        <button 
+                          onClick={() => {
+                            if (confirm(`Excluir administrador ${admin.name}?`)) {
+                              onDeleteAdmin(admin.id);
+                            }
+                          }}
+                          className="w-10 h-10 rounded-xl glass flex items-center justify-center text-red-400 hover:bg-red-500 hover:text-white transition-all"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+            
+            <div className="space-y-6">
+              <div className="glass p-8 rounded-[40px] space-y-4 text-center">
+                <div className="w-16 h-16 bg-brand-primary/10 rounded-3xl flex items-center justify-center text-brand-primary mx-auto">
+                  <Lock size={32} />
+                </div>
+                <h4 className="text-sm font-black uppercase tracking-widest text-white">Segurança</h4>
+                <p className="text-white/40 text-[10px] font-medium leading-relaxed">
+                  Administradores têm acesso total ao painel. Certifique-se de usar emails válidos.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {activeTab === 'settings' && (
           <div className="glass p-6 md:p-10 rounded-[40px] space-y-12 max-w-2xl">
             <div className="space-y-8">
@@ -1396,16 +1604,20 @@ function AppContent() {
 
   const [queue, setQueue] = useState<Employee[]>([]);
   const [history, setHistory] = useState<LotteryHistory[]>([]);
+  const [admins, setAdmins] = useState<AdminUser[]>([]);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [isLoadingQueue, setIsLoadingQueue] = useState(true);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
+  const [isLoadingAdmins, setIsLoadingAdmins] = useState(true);
   const [isLoadingSettings, setIsLoadingSettings] = useState(true);
 
   // Auth Listener
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-      const isAdminUser = user?.email && ADMIN_EMAILS.includes(user.email.toLowerCase());
+      const isHardcodedAdmin = user?.email && ADMIN_EMAILS.includes(user.email.toLowerCase());
+      const isDynamicAdmin = user?.email && admins.some(a => a.email.toLowerCase() === user.email?.toLowerCase() && a.isActive);
+      const isAdminUser = isHardcodedAdmin || isDynamicAdmin;
       
       if (user && isAdminUser) {
         setIsAuthenticated(true);
@@ -1414,14 +1626,16 @@ function AppContent() {
         setIsAuthenticated(false);
         if (view === 'admin') setView('public');
         // If a non-admin user is logged in, sign them out to prevent permission errors
-        if (user && !isAdminUser) {
+        if (user && !isAdminUser && !isLoadingAdmins) {
           auth.signOut();
         }
       }
-      setIsAuthReady(true);
+      if (!isLoadingAdmins) {
+        setIsAuthReady(true);
+      }
     });
     return () => unsubscribe();
-  }, [view]);
+  }, [view, admins, isLoadingAdmins]);
 
   // Firestore Real-time Sync: Queue
   useEffect(() => {
@@ -1455,6 +1669,20 @@ function AppContent() {
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'history');
       setIsLoadingHistory(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Firestore Real-time Sync: Admins
+  useEffect(() => {
+    setIsLoadingAdmins(true);
+    const unsubscribe = onSnapshot(collection(db, 'admins'), (snapshot) => {
+      const items = snapshot.docs.map(doc => doc.data() as AdminUser);
+      setAdmins(items);
+      setIsLoadingAdmins(false);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'admins');
+      setIsLoadingAdmins(false);
     });
     return () => unsubscribe();
   }, []);
@@ -1704,6 +1932,53 @@ function AppContent() {
     }
   };
 
+  const addAdmin = async (name: string, email: string, password?: string, photoUrl?: string) => {
+    const id = Math.random().toString(36).substr(2, 9);
+    const newAdmin: AdminUser = {
+      id,
+      name,
+      email,
+      isActive: true,
+      createdAt: new Date().toISOString(),
+      ...(password ? { password } : {}),
+      ...(photoUrl ? { photoUrl } : {})
+    };
+    try {
+      await setDoc(doc(db, 'admins', id), newAdmin);
+      addNotification(`Administrador ${name} adicionado!`, 'success');
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      addNotification('Erro ao adicionar administrador.', 'error', errMsg);
+      handleFirestoreError(err, OperationType.CREATE, `admins/${id}`);
+    }
+  };
+
+  const updateAdmin = async (id: string, updates: Partial<AdminUser>) => {
+    try {
+      // Sanitize updates to remove undefined
+      const sanitizedUpdates = Object.fromEntries(
+        Object.entries(updates).filter(([_, v]) => v !== undefined)
+      );
+      await updateDoc(doc(db, 'admins', id), sanitizedUpdates);
+      addNotification('Administrador atualizado com sucesso!', 'success');
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      addNotification('Erro ao atualizar administrador.', 'error', errMsg);
+      handleFirestoreError(err, OperationType.UPDATE, `admins/${id}`);
+    }
+  };
+
+  const deleteAdmin = async (id: string) => {
+    try {
+      await deleteDoc(doc(db, 'admins', id));
+      addNotification('Administrador removido.', 'info');
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      addNotification('Erro ao remover administrador.', 'error', errMsg);
+      handleFirestoreError(err, OperationType.DELETE, `admins/${id}`);
+    }
+  };
+
   const setQueueBulk = async (newQueue: Employee[]) => {
     try {
       const batch = writeBatch(db);
@@ -1777,8 +2052,13 @@ function AppContent() {
           history={history}
           onClearHistory={clearHistory}
           onViewPublic={() => setView('public')}
+          admins={admins}
+          onAddAdmin={addAdmin}
+          onUpdateAdmin={updateAdmin}
+          onDeleteAdmin={deleteAdmin}
           isLoadingQueue={isLoadingQueue}
           isLoadingHistory={isLoadingHistory}
+          isLoadingAdmins={isLoadingAdmins}
           isLoadingSettings={isLoadingSettings}
         />
       )}

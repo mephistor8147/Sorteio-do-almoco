@@ -1,20 +1,46 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# Edifício Amazonas - Gourmet Queue
 
-# Run and deploy your AI Studio app
+Uma aplicação elegante e funcional para gerenciamento de filas de serviço, inspirada na natureza e otimizada para uma experiência gourmet.
 
-This contains everything you need to run your app locally.
+## 🚀 Funcionalidades
 
-View your app in AI Studio: https://ai.studio/apps/7ed9ccd3-a27b-4266-89d4-caeaa60a0bb8
+- **Gerenciamento de Fila**: Adicione, edite, remova e reordene funcionários na fila de serviço.
+- **Sorteio Automatizado**: Realize sorteios aleatórios (Fisher-Yates) para definir a ordem de prioridade.
+- **Painel Administrativo**: Controle total sobre a fila, configurações do site e histórico de sorteios.
+- **Gestão de Administradores**: Adicione novos gestores com controle de acesso dinâmico.
+- **Importação/Exportação**: Suporte para arquivos Excel (XLSX) para facilitar a migração de dados.
+- **Design Responsivo**: Interface moderna e polida que funciona em qualquer dispositivo.
+- **Real-time**: Atualizações em tempo real utilizando Firebase Firestore.
 
-## Run Locally
+## 🛠️ Tecnologias
 
-**Prerequisites:**  Node.js
+- **React 18** com **Vite**
+- **TypeScript**
+- **Tailwind CSS** para estilização
+- **Firebase** (Auth & Firestore)
+- **Motion** (AnimatePresence) para animações fluidas
+- **Lucide React** para ícones
+- **XLSX** para manipulação de planilhas
 
+## 📦 Instalação
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+1. Clone o repositório:
+   ```bash
+   git clone https://github.com/seu-usuario/edificio-amazonas-queue.git
+   ```
+
+2. Instale as dependências:
+   ```bash
+   npm install
+   ```
+
+3. Configure as variáveis de ambiente no arquivo `.env` (veja `.env.example`).
+
+4. Inicie o servidor de desenvolvimento:
+   ```bash
+   npm run dev
+   ```
+
+## 📄 Licença
+
+Este projeto está sob a licença MIT. Veja o arquivo [LICENSE](LICENSE) para mais detalhes.
