@@ -598,12 +598,12 @@ const AdminPanel = ({
 
   const days = [
     { id: 0, label: 'Dom' },
-    { id: 1, label: 'Seg' },
-    { id: 2, label: 'Ter' },
-    { id: 3, label: 'Qua' },
-    { id: 4, label: 'Qui' },
-    { id: 5, label: 'Sex' },
-    { id: 6, label: 'Sáb' },
+    { id: 1, label: 'Segunda' },
+    { id: 2, label: 'Terça' },
+    { id: 3, label: 'Quarta' },
+    { id: 4, label: 'Quinta' },
+    { id: 5, label: 'Sexta' },
+    { id: 6, label: 'Sábado' },
   ];
 
   const toggleDay = (dayId: number) => {
@@ -875,6 +875,7 @@ const AdminPanel = ({
                           <button
                             key={day.id}
                             onClick={() => toggleDay(day.id)}
+                            translate="no"
                             className={`px-4 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border ${
                               (tempSettings.lotteryDays || []).includes(day.id)
                                 ? 'bg-brand-primary border-brand-primary text-white'
