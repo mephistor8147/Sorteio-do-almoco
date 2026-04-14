@@ -16,9 +16,17 @@
         "position": {
           "type": "number",
           "description": "Current position in the queue."
+        },
+        "photoUrl": {
+          "type": "string",
+          "description": "URL of the employee's photo."
+        },
+        "isActive": {
+          "type": "boolean",
+          "description": "Whether the employee is active for the lottery."
         }
       },
-      "required": ["id", "name", "position"]
+      "required": ["id", "name", "position", "isActive"]
     },
     "AppSettings": {
       "title": "AppSettings",
@@ -50,9 +58,27 @@
         "lastLotteryDate": {
           "type": "string",
           "format": "date-time"
+        },
+        "headerTitleLine1": {
+          "type": "string"
+        },
+        "headerTitleLine2": {
+          "type": "string"
+        },
+        "headerSubtitle": {
+          "type": "string"
+        },
+        "queueTitleLine1": {
+          "type": "string"
+        },
+        "queueTitleLine2": {
+          "type": "string"
+        },
+        "queueSubtitle": {
+          "type": "string"
         }
       },
-      "required": ["heroTitleLine1", "heroTitleLine2", "heroSubtitle", "heroDescription", "lotteryTime", "lotteryDays"]
+      "required": ["heroTitleLine1", "heroTitleLine2", "heroSubtitle", "heroDescription", "lotteryTime", "lotteryDays", "headerTitleLine1", "headerTitleLine2", "headerSubtitle", "queueTitleLine1", "queueTitleLine2", "queueSubtitle"]
     },
     "LotteryHistory": {
       "title": "LotteryHistory",
@@ -71,9 +97,20 @@
         },
         "winnerId": {
           "type": "string"
+        },
+        "fullList": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "name": { "type": "string" },
+              "photoUrl": { "type": "string" }
+            }
+          }
         }
       },
-      "required": ["id", "timestamp", "winnerName", "winnerId"]
+      "required": ["id", "timestamp", "winnerName", "winnerId", "fullList"]
     }
   },
   "firestore": {

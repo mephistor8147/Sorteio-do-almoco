@@ -20,6 +20,7 @@ import {
   orderBy, 
   writeBatch,
   deleteDoc,
+  updateDoc,
   getDocFromServer
 } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
@@ -109,5 +110,6 @@ export {
   orderBy, 
   writeBatch,
   deleteDoc,
+  updateDoc,
   type User
 };

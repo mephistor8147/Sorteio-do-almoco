@@ -58,33 +58,42 @@ service cloud.firestore {
     // ===============================================================
 
     function isValidEmployee() {
-      return hasRequiredFields(['id', 'name', 'position']) &&
-             hasOnlyAllowedFields(['id', 'name', 'position']) &&
+      return hasRequiredFields(['id', 'name', 'position', 'isActive']) &&
+             hasOnlyAllowedFields(['id', 'name', 'position', 'isActive', 'photoUrl']) &&
              request.resource.data.id is string &&
              isValidString('name', 1, 100) &&
              request.resource.data.position is number &&
-             request.resource.data.position >= 0;
+             request.resource.data.position >= 0 &&
+             request.resource.data.isActive is bool &&
+             (!('photoUrl' in request.resource.data) || request.resource.data.photoUrl is string);
     }
 
     function isValidSettings() {
-      return hasRequiredFields(['heroTitleLine1', 'heroTitleLine2', 'heroSubtitle', 'heroDescription', 'lotteryTime', 'lotteryDays']) &&
-             hasOnlyAllowedFields(['heroTitleLine1', 'heroTitleLine2', 'heroSubtitle', 'heroDescription', 'lotteryTime', 'lotteryDays', 'lastLotteryDate']) &&
+      return hasRequiredFields(['heroTitleLine1', 'heroTitleLine2', 'heroSubtitle', 'heroDescription', 'lotteryTime', 'lotteryDays', 'headerTitleLine1', 'headerTitleLine2', 'headerSubtitle', 'queueTitleLine1', 'queueTitleLine2', 'queueSubtitle']) &&
+             hasOnlyAllowedFields(['heroTitleLine1', 'heroTitleLine2', 'heroSubtitle', 'heroDescription', 'lotteryTime', 'lotteryDays', 'lastLotteryDate', 'headerTitleLine1', 'headerTitleLine2', 'headerSubtitle', 'queueTitleLine1', 'queueTitleLine2', 'queueSubtitle']) &&
              isValidString('heroTitleLine1', 1, 50) &&
              isValidString('heroTitleLine2', 1, 50) &&
              isValidString('heroSubtitle', 1, 50) &&
              isValidString('heroDescription', 1, 500) &&
              request.resource.data.lotteryTime is string &&
              request.resource.data.lotteryTime.matches('^([01][0-9]|2[0-3]):[0-5][0-9]$') &&
-             request.resource.data.lotteryDays is list;
+             request.resource.data.lotteryDays is list &&
+             isValidString('headerTitleLine1', 1, 50) &&
+             isValidString('headerTitleLine2', 1, 50) &&
+             isValidString('headerSubtitle', 1, 50) &&
+             isValidString('queueTitleLine1', 1, 50) &&
+             isValidString('queueTitleLine2', 1, 50) &&
+             isValidString('queueSubtitle', 1, 50);
     }
 
     function isValidHistory() {
-      return hasRequiredFields(['id', 'timestamp', 'winnerName', 'winnerId']) &&
-             hasOnlyAllowedFields(['id', 'timestamp', 'winnerName', 'winnerId']) &&
+      return hasRequiredFields(['id', 'timestamp', 'winnerName', 'winnerId', 'fullList']) &&
+             hasOnlyAllowedFields(['id', 'timestamp', 'winnerName', 'winnerId', 'fullList']) &&
              request.resource.data.id is string &&
              request.resource.data.timestamp is string &&
              request.resource.data.winnerName is string &&
-             request.resource.data.winnerId is string;
+             request.resource.data.winnerId is string &&
+             request.resource.data.fullList is list;
     }
 
     // ===============================================================
