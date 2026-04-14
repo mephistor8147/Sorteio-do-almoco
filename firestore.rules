@@ -36,7 +36,7 @@ service cloud.firestore {
 
     function isAdmin() {
       return isAuthenticated() && 
-             (request.auth.token.email == "l2xbrasil@gmail.com" || request.auth.token.email == "Sorteioadm@sorteio.com");
+             (request.auth.token.email.lower() == "l2xbrasil@gmail.com" || request.auth.token.email.lower() == "sorteioadm@sorteio.com");
     }
 
     function hasOnlyAllowedFields(fields) {
@@ -78,6 +78,15 @@ service cloud.firestore {
              request.resource.data.lotteryDays is list;
     }
 
+    function isValidHistory() {
+      return hasRequiredFields(['id', 'timestamp', 'winnerName', 'winnerId']) &&
+             hasOnlyAllowedFields(['id', 'timestamp', 'winnerName', 'winnerId']) &&
+             request.resource.data.id is string &&
+             request.resource.data.timestamp is string &&
+             request.resource.data.winnerName is string &&
+             request.resource.data.winnerId is string;
+    }
+
     // ===============================================================
     // Rules
     // ===============================================================
@@ -91,6 +100,12 @@ service cloud.firestore {
     match /settings/global {
       allow read: if true;
       allow create, update: if isAdmin() && isValidSettings();
+      allow delete: if isAdmin();
+    }
+
+    match /history/{historyId} {
+      allow read: if true;
+      allow create: if isAdmin() && isValidHistory();
       allow delete: if isAdmin();
     }
 

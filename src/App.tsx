@@ -62,6 +62,13 @@ interface AppSettings {
   lastLotteryDate: string | null;
 }
 
+interface LotteryHistory {
+  id: string;
+  timestamp: string;
+  winnerName: string;
+  winnerId: string;
+}
+
 // --- Constants ---
 const DEFAULT_SETTINGS: AppSettings = {
   heroTitleLine1: 'SABOR',
@@ -73,7 +80,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   lastLotteryDate: null
 };
 
-const ADMIN_EMAILS = ['l2xbrasil@gmail.com', 'Sorteioadm@sorteio.com'];
+const ADMIN_EMAILS = ['l2xbrasil@gmail.com', 'sorteioadm@sorteio.com'];
 
 const MOCK_QUEUE: Employee[] = [
   { id: '1', name: 'Ricardo Oliveira', position: 1 },
@@ -378,7 +385,9 @@ const AdminPanel = ({
   settings,
   onUpdateSettings,
   onShuffle,
-  onSetQueue
+  onSetQueue,
+  history,
+  onClearHistory
 }: { 
   onLogout: () => void, 
   queue: Employee[], 
@@ -387,10 +396,12 @@ const AdminPanel = ({
   settings: AppSettings,
   onUpdateSettings: (settings: AppSettings) => void,
   onShuffle: () => void,
-  onSetQueue: (queue: Employee[]) => void
+  onSetQueue: (queue: Employee[]) => void,
+  history: LotteryHistory[],
+  onClearHistory: () => void
 }) => {
   const [newName, setNewName] = useState('');
-  const [activeTab, setActiveTab] = useState<'queue' | 'settings' | 'lottery' | 'database'>('queue');
+  const [activeTab, setActiveTab] = useState<'queue' | 'settings' | 'lottery' | 'database' | 'history'>('queue');
   const [tempSettings, setTempSettings] = useState<AppSettings>(settings);
   const [dbStatus, setDbStatus] = useState<{ type: 'success' | 'error', message: string } | null>(null);
 
@@ -551,6 +562,12 @@ const AdminPanel = ({
             className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'database' ? 'bg-brand-primary text-white' : 'text-white/40 hover:text-white'}`}
           >
             Banco de Dados
+          </button>
+          <button 
+            onClick={() => setActiveTab('history')}
+            className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'history' ? 'bg-brand-primary text-white' : 'text-white/40 hover:text-white'}`}
+          >
+            Histórico
           </button>
         </div>
 
@@ -783,6 +800,64 @@ const AdminPanel = ({
             </AnimatePresence>
           </div>
         )}
+
+        {activeTab === 'history' && (
+          <div className="space-y-8">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xl font-bold uppercase tracking-tight flex items-center gap-3">
+                <Trophy className="text-brand-secondary" size={20} /> Histórico de Sorteios
+              </h3>
+              {history.length > 0 && (
+                <button 
+                  onClick={() => {
+                    if (confirm('Tem certeza que deseja limpar todo o histórico?')) {
+                      onClearHistory();
+                    }
+                  }}
+                  className="px-4 py-2 rounded-xl bg-red-500/10 text-red-500 text-[10px] font-black uppercase tracking-widest hover:bg-red-500 hover:text-white transition-all"
+                >
+                  Limpar Histórico
+                </button>
+              )}
+            </div>
+
+            <div className="space-y-4">
+              {history.length === 0 ? (
+                <div className="glass p-12 rounded-[40px] text-center space-y-4">
+                  <div className="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center mx-auto text-white/20">
+                    <Clock size={32} />
+                  </div>
+                  <p className="text-white/40 text-xs font-bold uppercase tracking-widest">Nenhum sorteio registrado ainda.</p>
+                </div>
+              ) : (
+                history.map((item) => (
+                  <motion.div 
+                    key={item.id}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="glass p-6 rounded-[32px] flex items-center justify-between group"
+                  >
+                    <div className="flex items-center gap-6">
+                      <div className="w-12 h-12 bg-brand-primary/10 rounded-2xl flex items-center justify-center text-brand-primary">
+                        <Trophy size={24} />
+                      </div>
+                      <div>
+                        <h4 className="text-white font-bold uppercase tracking-tight">{item.winnerName}</h4>
+                        <p className="text-white/40 text-[10px] font-black uppercase tracking-widest mt-1">
+                          {new Date(item.timestamp).toLocaleDateString('pt-BR')} às {new Date(item.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-brand-secondary text-[10px] font-black uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-all">
+                      Vencedor do Dia
+                    </div>
+                  </motion.div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+
         {activeTab === 'settings' && (
           <div className="glass p-6 md:p-10 rounded-[40px] space-y-8 max-w-2xl">
             <h3 className="text-xl font-bold uppercase tracking-tight flex items-center gap-3">
@@ -951,13 +1026,14 @@ function AppContent() {
   const [isShuffling, setIsShuffling] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [queue, setQueue] = useState<Employee[]>([]);
+  const [history, setHistory] = useState<LotteryHistory[]>([]);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [isAuthReady, setIsAuthReady] = useState(false);
 
   // Auth Listener
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-      const isAdminUser = user?.email && ADMIN_EMAILS.includes(user.email);
+      const isAdminUser = user?.email && ADMIN_EMAILS.includes(user.email.toLowerCase());
       
       if (user && isAdminUser) {
         setIsAuthenticated(true);
@@ -987,6 +1063,18 @@ function AppContent() {
     return () => unsubscribe();
   }, []);
 
+  // Firestore Real-time Sync: History
+  useEffect(() => {
+    const q = query(collection(db, 'history'), orderBy('timestamp', 'desc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const items = snapshot.docs.map(doc => doc.data() as LotteryHistory);
+      setHistory(items);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'history');
+    });
+    return () => unsubscribe();
+  }, []);
+
   // Firestore Real-time Sync: Settings
   useEffect(() => {
     const unsubscribe = onSnapshot(doc(db, 'settings', 'global'), (snapshot) => {
@@ -995,7 +1083,7 @@ function AppContent() {
       } else {
         // If settings don't exist in Firestore, we use DEFAULT_SETTINGS (already set as initial state)
         // We only attempt to initialize the document if the user is the authorized admin
-        if (auth.currentUser?.email && ADMIN_EMAILS.includes(auth.currentUser.email)) {
+        if (auth.currentUser?.email && ADMIN_EMAILS.includes(auth.currentUser.email.toLowerCase())) {
           setDoc(doc(db, 'settings', 'global'), DEFAULT_SETTINGS).catch(err => {
             handleFirestoreError(err, OperationType.WRITE, 'settings/global');
           });
@@ -1010,7 +1098,7 @@ function AppContent() {
   useEffect(() => {
     const checkLottery = () => {
       // Only the authorized admin can trigger the automatic lottery write
-      if (!auth.currentUser?.email || !ADMIN_EMAILS.includes(auth.currentUser.email)) return;
+      if (!auth.currentUser?.email || !ADMIN_EMAILS.includes(auth.currentUser.email.toLowerCase())) return;
       
       const now = new Date();
       const currentDay = now.getDay();
@@ -1033,7 +1121,7 @@ function AppContent() {
   }, [settings, queue, isAuthenticated]);
 
   const handleLogin = () => {
-    if (auth.currentUser?.email && ADMIN_EMAILS.includes(auth.currentUser.email)) {
+    if (auth.currentUser?.email && ADMIN_EMAILS.includes(auth.currentUser.email.toLowerCase())) {
       setView('admin');
     } else {
       // If someone else logs in, sign them out and show error
@@ -1091,15 +1179,40 @@ function AppContent() {
 
   const completeShuffle = async () => {
     const shuffled = [...queue].sort(() => Math.random() - 0.5);
+    const winner = shuffled[0];
     const batch = writeBatch(db);
+    
     shuffled.forEach((emp, idx) => {
       batch.update(doc(db, 'queue', emp.id), { position: idx + 1 });
     });
+
+    // Add to history
+    const historyId = Math.random().toString(36).substr(2, 9);
+    const historyEntry: LotteryHistory = {
+      id: historyId,
+      timestamp: new Date().toISOString(),
+      winnerName: winner.name,
+      winnerId: winner.id
+    };
+    batch.set(doc(db, 'history', historyId), historyEntry);
+
     try {
       await batch.commit();
       setIsShuffling(false);
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, 'queue/shuffle');
+    }
+  };
+
+  const clearHistory = async () => {
+    try {
+      const batch = writeBatch(db);
+      history.forEach(item => {
+        batch.delete(doc(db, 'history', item.id));
+      });
+      await batch.commit();
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, 'history/clear');
     }
   };
 
@@ -1142,6 +1255,8 @@ function AppContent() {
           onUpdateSettings={updateSettings}
           onShuffle={handleShuffle}
           onSetQueue={setQueueBulk}
+          history={history}
+          onClearHistory={clearHistory}
         />
       )}
 

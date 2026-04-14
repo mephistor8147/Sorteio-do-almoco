@@ -53,6 +53,27 @@
         }
       },
       "required": ["heroTitleLine1", "heroTitleLine2", "heroSubtitle", "heroDescription", "lotteryTime", "lotteryDays"]
+    },
+    "LotteryHistory": {
+      "title": "LotteryHistory",
+      "description": "A record of a past lottery draw.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "winnerName": {
+          "type": "string"
+        },
+        "winnerId": {
+          "type": "string"
+        }
+      },
+      "required": ["id", "timestamp", "winnerName", "winnerId"]
     }
   },
   "firestore": {
@@ -63,6 +84,10 @@
     "/settings/global": {
       "schema": "AppSettings",
       "description": "Global application settings document."
+    },
+    "/history/{historyId}": {
+      "schema": "LotteryHistory",
+      "description": "Collection of past lottery draws."
     }
   }
 }
