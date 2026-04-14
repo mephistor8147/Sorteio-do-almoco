@@ -932,52 +932,91 @@ const AdminPanel = ({
               {isLoadingSettings ? (
                 <SkeletonSettings />
               ) : (
-                <div className="glass p-8 rounded-[40px] space-y-8">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-xl font-bold uppercase tracking-tight flex items-center gap-3">
-                      <Calendar className="text-brand-secondary" size={20} /> Programação Automática
-                    </h3>
-                  </div>
+                <>
+                  <div className="glass p-8 rounded-[40px] space-y-8">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-xl font-bold uppercase tracking-tight flex items-center gap-3">
+                        <Calendar className="text-brand-secondary" size={20} /> Programação Automática
+                      </h3>
+                    </div>
 
-                  <div className="space-y-6">
-                    <div className="space-y-4">
-                      <label className="text-[10px] font-black uppercase tracking-[0.2em] text-white/40 ml-4">Dias da Semana</label>
-                      <div className="flex flex-wrap gap-2">
-                        {days.map(day => (
-                          <button
-                            key={day.id}
-                            onClick={() => toggleDay(day.id)}
-                            translate="no"
-                            className={`px-4 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border ${
-                              (tempSettings.lotteryDays || []).includes(day.id)
-                                ? 'bg-brand-primary border-brand-primary text-white'
-                                : 'bg-white/5 border-white/10 text-white/40 hover:text-white'
-                            }`}
-                          >
-                            {day.label}
-                          </button>
-                        ))}
+                    <div className="space-y-6">
+                      <div className="space-y-4">
+                        <label className="text-[10px] font-black uppercase tracking-[0.2em] text-white/40 ml-4">Dias da Semana</label>
+                        <div className="flex flex-wrap gap-2">
+                          {days.map(day => (
+                            <button
+                              key={day.id}
+                              onClick={() => toggleDay(day.id)}
+                              translate="no"
+                              className={`px-4 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border ${
+                                (tempSettings.lotteryDays || []).includes(day.id)
+                                  ? 'bg-brand-primary border-brand-primary text-white'
+                                  : 'bg-white/5 border-white/10 text-white/40 hover:text-white'
+                              }`}
+                            >
+                              {day.label}
+                            </button>
+                          ))}
+                        </div>
                       </div>
-                    </div>
 
-                    <div className="space-y-4">
-                      <label className="text-[10px] font-black uppercase tracking-[0.2em] text-white/40 ml-4">Horário do Sorteio</label>
-                      <input 
-                        type="time"
-                        value={tempSettings.lotteryTime || '11:00'}
-                        onChange={(e) => setTempSettings({ ...tempSettings, lotteryTime: e.target.value })}
-                        className="w-full sm:w-48 bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all"
-                      />
-                    </div>
+                      <div className="space-y-4">
+                        <label className="text-[10px] font-black uppercase tracking-[0.2em] text-white/40 ml-4">Horário do Sorteio</label>
+                        <input 
+                          type="time"
+                          value={tempSettings.lotteryTime || '11:00'}
+                          onChange={(e) => setTempSettings({ ...tempSettings, lotteryTime: e.target.value })}
+                          className="w-full sm:w-48 bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all"
+                        />
+                      </div>
 
-                    <button 
-                      onClick={() => onUpdateSettings(tempSettings)}
-                      className="w-full sm:w-auto px-12 bg-brand-primary hover:bg-brand-primary/80 text-white font-black uppercase tracking-[0.2em] py-4 rounded-2xl shadow-lg shadow-brand-primary/20 transition-all active:scale-95"
-                    >
-                      Salvar Programação
-                    </button>
+                      <button 
+                        onClick={() => onUpdateSettings(tempSettings)}
+                        className="w-full sm:w-auto px-12 bg-brand-primary hover:bg-brand-primary/80 text-white font-black uppercase tracking-[0.2em] py-4 rounded-2xl shadow-lg shadow-brand-primary/20 transition-all active:scale-95"
+                      >
+                        Salvar Programação
+                      </button>
+                    </div>
                   </div>
-                </div>
+
+                  {/* Histórico de Sorteios na aba Sorteio */}
+                  <div className="glass p-8 rounded-[40px] space-y-6">
+                    <h3 className="text-xl font-bold uppercase tracking-tight flex items-center gap-3">
+                      <Trophy className="text-brand-secondary" size={20} /> Histórico de Sorteios
+                    </h3>
+                    <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                      {history.length === 0 ? (
+                        <div className="text-center py-12 text-white/20">
+                          <Trophy size={48} className="mx-auto mb-4 opacity-10" />
+                          <p className="text-xs font-black uppercase tracking-widest">Nenhum sorteio realizado</p>
+                        </div>
+                      ) : (
+                        history.map((item) => (
+                          <div key={item.id} className="bg-white/5 border border-white/10 rounded-2xl p-4 flex items-center justify-between group hover:bg-white/10 transition-all">
+                            <div className="flex items-center gap-4">
+                              <div className="w-10 h-10 rounded-xl bg-brand-secondary/10 flex items-center justify-center text-brand-secondary">
+                                <Trophy size={18} />
+                              </div>
+                              <div>
+                                <p className="text-white font-bold text-sm">{item.winnerName}</p>
+                                <p className="text-[10px] text-white/40 font-black uppercase tracking-widest">
+                                  {new Date(item.timestamp).toLocaleString('pt-BR')}
+                                </p>
+                              </div>
+                            </div>
+                            <button 
+                              onClick={() => onDeleteHistoryItem(item.id)}
+                              className="w-8 h-8 rounded-lg flex items-center justify-center text-white/20 hover:bg-red-500 hover:text-white transition-all opacity-0 group-hover:opacity-100"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </>
               )}
             </div>
 
@@ -1744,33 +1783,54 @@ const LotteryCountdownCard = ({ settings }: { settings: AppSettings }) => {
 
   useEffect(() => {
     const calculateTime = () => {
+      if (!settings) return;
+      
       const now = new Date();
-      const currentDay = now.getDay();
-      const isLotteryDay = (settings.lotteryDays || []).includes(currentDay);
-      const todayStr = now.toISOString().split('T')[0];
-      const alreadyHappened = settings.lastLotteryDate === todayStr;
+      const lotteryDays = settings.lotteryDays || [];
+      const lotteryTime = settings.lotteryTime || '11:00';
+      const [hours, minutes] = lotteryTime.split(':').map(Number);
 
-      if (!isLotteryDay || alreadyHappened) {
+      if (lotteryDays.length === 0) {
         setIsActive(false);
-        setTimeLeft(null);
         return;
       }
 
-      const [hours, minutes] = (settings.lotteryTime || '11:00').split(':').map(Number);
-      const target = new Date();
+      // Current local date YYYY-MM-DD
+      const todayStr = now.toLocaleDateString('en-CA');
+      
+      // Target for today
+      let target = new Date();
       target.setHours(hours, minutes, 0, 0);
 
-      const diff = target.getTime() - now.getTime();
+      const alreadyHappenedToday = settings.lastLotteryDate === todayStr;
+      const timePassedToday = now.getTime() >= target.getTime();
 
-      if (diff <= 0) {
-        setIsActive(false);
-        setTimeLeft(null);
-      } else {
+      if (alreadyHappenedToday || timePassedToday || !lotteryDays.includes(now.getDay())) {
+        // Find next day
+        let daysToAdd = 1;
+        while (daysToAdd <= 7) {
+          const checkDate = new Date();
+          checkDate.setDate(now.getDate() + daysToAdd);
+          if (lotteryDays.includes(checkDate.getDay())) {
+            target = new Date(checkDate);
+            target.setHours(hours, minutes, 0, 0);
+            break;
+          }
+          daysToAdd++;
+        }
+      }
+
+      const diff = target.getTime() - now.getTime();
+      
+      if (diff > 0 && diff <= 24 * 3600000) { // Show if within 24 hours
         setIsActive(true);
         const h = Math.floor(diff / 3600000);
         const m = Math.floor((diff % 3600000) / 60000);
         const s = Math.floor((diff % 60000) / 1000);
         setTimeLeft(`${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`);
+      } else {
+        setIsActive(false);
+        setTimeLeft(null);
       }
     };
 
@@ -2011,13 +2071,17 @@ function AppContent() {
 
   useEffect(() => {
     const checkLottery = async () => {
-      // Only the authorized admin can trigger the automatic lottery write
-      if (!auth.currentUser?.email || !ADMIN_EMAILS.includes(auth.currentUser.email.toLowerCase())) return;
+      // Any active admin or coordinator can trigger the automatic lottery
+      const isHardcodedAdmin = auth.currentUser?.email && ADMIN_EMAILS.includes(auth.currentUser.email.toLowerCase());
+      const isDynamicAdmin = auth.currentUser?.email && admins.some(a => a.email.toLowerCase() === auth.currentUser?.email?.toLowerCase() && a.isActive);
+      
+      if (!isHardcodedAdmin && !isDynamicAdmin) return;
       
       const now = new Date();
       const currentDay = now.getDay();
       const currentTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-      const todayStr = now.toISOString().split('T')[0];
+      // Use local date string (YYYY-MM-DD) to avoid timezone issues with UTC
+      const todayStr = now.toLocaleDateString('en-CA');
 
       if (
         (settings.lotteryDays || []).includes(currentDay) &&
@@ -2034,7 +2098,7 @@ function AppContent() {
 
     const interval = setInterval(checkLottery, 30000);
     return () => clearInterval(interval);
-  }, [settings, queue, isAuthenticated]);
+  }, [settings, queue, admins]);
 
   const handleLogin = () => {
     if (auth.currentUser?.email && ADMIN_EMAILS.includes(auth.currentUser.email.toLowerCase())) {
