@@ -387,72 +387,6 @@ const Login = ({ onLogin, onBack }: { onLogin: () => void, onBack: () => void })
   );
 };
 
-const LotteryOverlay = ({ onComplete }: { onComplete: () => void }) => {
-  useEffect(() => {
-    const timer = setTimeout(onComplete, 3500);
-    return () => clearTimeout(timer);
-  }, [onComplete]);
-
-  return (
-    <motion.div 
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-brand-bg/95 backdrop-blur-2xl"
-    >
-      <div className="text-center space-y-8">
-        <motion.div
-          animate={{ 
-            rotate: [0, 10, -10, 10, 0],
-            scale: [1, 1.1, 1],
-          }}
-          transition={{ duration: 0.5, repeat: 5 }}
-          className="w-32 h-32 bg-brand-primary rounded-[40px] flex items-center justify-center text-white mx-auto shadow-2xl shadow-brand-primary/40"
-        >
-          <Dices size={64} />
-        </motion.div>
-        
-        <div className="space-y-2">
-          <motion.h2 
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            className="text-4xl font-black uppercase tracking-tighter text-white"
-          >
-            Sorteando <span className="text-brand-secondary">Fila</span>
-          </motion.h2>
-          <motion.p 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.4 }}
-            className="text-brand-secondary text-[10px] font-black uppercase tracking-[0.5em]"
-          >
-            Gourmet Experience
-          </motion.p>
-        </div>
-
-        <div className="flex justify-center gap-2">
-          {[0, 1, 2].map((i) => (
-            <motion.div
-              key={i}
-              animate={{ opacity: [0.2, 1, 0.2] }}
-              transition={{ duration: 1, repeat: Infinity, delay: i * 0.2 }}
-              className="w-2 h-2 bg-brand-primary rounded-full"
-            />
-          ))}
-        </div>
-      </div>
-      
-      <motion.div 
-        initial={{ scaleX: 0 }}
-        animate={{ scaleX: 1 }}
-        transition={{ duration: 3, ease: "linear" }}
-        className="absolute bottom-0 left-0 right-0 h-1 bg-brand-primary origin-left"
-      />
-    </motion.div>
-  );
-};
-
 const AdminPanel = ({ 
   onLogout, 
   queue, 
@@ -478,7 +412,7 @@ const AdminPanel = ({
   onToggleActive: (id: string, currentStatus: boolean) => void,
   settings: AppSettings,
   onUpdateSettings: (settings: AppSettings) => void,
-  onShuffle: () => void,
+  onShuffle: () => Promise<any>,
   onSetQueue: (queue: Employee[]) => void,
   onUpdateEmployee: (id: string, name: string, photoUrl?: string) => void,
   onDeleteHistoryItem: (id: string) => void,
@@ -493,6 +427,19 @@ const AdminPanel = ({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [activeTab, setActiveTab] = useState<'queue' | 'settings' | 'lottery' | 'database' | 'history'>('queue');
+
+  const [isShufflingLocal, setIsShufflingLocal] = useState(false);
+
+  const handleShuffleClick = async () => {
+    console.log('Botão Sortear Agora clicado');
+    setIsShufflingLocal(true);
+    try {
+      await onShuffle();
+    } catch (e) {
+      console.error('Erro ao chamar onShuffle:', e);
+    }
+    setIsShufflingLocal(false);
+  };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -928,11 +875,22 @@ const AdminPanel = ({
                   <p className="text-white/40 text-[10px] font-medium leading-relaxed">Realize um sorteio agora mesmo, independente da programação.</p>
                 </div>
                 <button 
-                  onClick={onShuffle}
-                  className="w-full bg-brand-secondary hover:bg-brand-secondary/80 text-brand-bg font-black uppercase tracking-[0.2em] py-4 rounded-2xl shadow-lg shadow-brand-secondary/20 transition-all active:scale-95 flex items-center justify-center gap-2"
+                  onClick={handleShuffleClick}
+                  disabled={isShufflingLocal}
+                  className="w-full bg-brand-secondary hover:bg-brand-secondary/80 text-brand-bg font-black uppercase tracking-[0.2em] py-4 rounded-2xl shadow-lg shadow-brand-secondary/20 transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <Sparkles size={18} /> Sortear Agora
+                  {isShufflingLocal ? (
+                    <div className="w-5 h-5 border-2 border-brand-bg/30 border-t-brand-bg rounded-full animate-spin" />
+                  ) : (
+                    <Sparkles size={18} />
+                  )}
+                  {isShufflingLocal ? 'Sorteando...' : 'Sortear Agora'}
                 </button>
+                {queue.filter(e => e.isActive).length < 2 && (
+                  <p className="text-red-400/60 text-[8px] font-bold uppercase tracking-widest animate-pulse">
+                    Mínimo de 2 funcionários ativos necessário
+                  </p>
+                )}
               </div>
             </div>
           </div>
@@ -1414,7 +1372,6 @@ const QueueItem = React.forwardRef<HTMLDivElement, { employee: Employee, isFirst
 function AppContent() {
   const [view, setView] = useState<'public' | 'login' | 'admin'>('public');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [isShuffling, setIsShuffling] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [notifications, setNotifications] = useState<{ id: string, message: string, type: 'success' | 'error' | 'info', description?: string }[]>([]);
 
@@ -1461,7 +1418,13 @@ function AppContent() {
     setIsLoadingQueue(true);
     const q = query(collection(db, 'queue'), orderBy('position', 'asc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const items = snapshot.docs.map(doc => doc.data() as Employee);
+      const items = snapshot.docs.map(doc => {
+        const data = doc.data() as Employee;
+        return {
+          ...data,
+          position: Number(data.position) || 0
+        };
+      });
       setQueue(items);
       setIsLoadingQueue(false);
     }, (error) => {
@@ -1510,7 +1473,7 @@ function AppContent() {
   }, [isAuthenticated]); // Re-run when auth state changes to check for admin initialization
 
   useEffect(() => {
-    const checkLottery = () => {
+    const checkLottery = async () => {
       // Only the authorized admin can trigger the automatic lottery write
       if (!auth.currentUser?.email || !ADMIN_EMAILS.includes(auth.currentUser.email.toLowerCase())) return;
       
@@ -1523,10 +1486,12 @@ function AppContent() {
         (settings.lotteryDays || []).includes(currentDay) &&
         currentTime === (settings.lotteryTime || '11:00') &&
         settings.lastLotteryDate !== todayStr &&
-        queue.length > 1
+        queue.filter(e => e.isActive).length >= 2
       ) {
-        handleShuffle();
-        updateSettings({ ...settings, lastLotteryDate: todayStr });
+        const success = await handleShuffle();
+        if (success) {
+          await updateSettings({ ...settings, lastLotteryDate: todayStr });
+        }
       }
     };
 
@@ -1554,9 +1519,9 @@ function AppContent() {
     const newEmp: Employee = {
       id,
       name,
-      photoUrl,
       isActive: true,
-      position: queue.length + 1
+      position: queue.length + 1,
+      ...(photoUrl ? { photoUrl } : {})
     };
     try {
       await setDoc(doc(db, 'queue', id), newEmp);
@@ -1570,7 +1535,9 @@ function AppContent() {
 
   const updateEmployee = async (id: string, name: string, photoUrl?: string) => {
     try {
-      await updateDoc(doc(db, 'queue', id), { name, photoUrl });
+      const updates: any = { name };
+      if (photoUrl !== undefined) updates.photoUrl = photoUrl || "";
+      await updateDoc(doc(db, 'queue', id), updates);
       addNotification(`${name} atualizado com sucesso!`, 'success');
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
@@ -1620,58 +1587,73 @@ function AppContent() {
     }
   };
 
-  const handleShuffle = () => {
+  const handleShuffle = async () => {
+    console.log('Iniciando handleShuffle. Queue size:', queue.length);
     const activeEmployees = queue.filter(emp => emp.isActive);
+    console.log('Active employees:', activeEmployees.length);
+    
     if (activeEmployees.length < 2) {
       addNotification('É necessário pelo menos 2 funcionários ativos para o sorteio.', 'error');
-      return;
-    }
-    setIsShuffling(true);
-  };
-
-  const completeShuffle = async () => {
-    const activeEmployees = queue.filter(emp => emp.isActive);
-    if (activeEmployees.length < 2) {
-      setIsShuffling(false);
-      return;
+      return false;
     }
 
-    const shuffled = [...activeEmployees].sort(() => Math.random() - 0.5);
+    addNotification('Iniciando sorteio...', 'info');
+
+    // Fisher-Yates Shuffle for better randomness
+    const shuffled = [...activeEmployees];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+
     const winner = shuffled[0];
-    const batch = writeBatch(db);
     
     // Update positions for ALL employees (active first, then inactive)
     const inactiveEmployees = queue.filter(emp => !emp.isActive);
     const fullNewOrder = [...shuffled, ...inactiveEmployees];
-
-    fullNewOrder.forEach((emp, idx) => {
-      batch.update(doc(db, 'queue', emp.id), { position: idx + 1 });
-    });
-
-    // Add to history
-    const historyId = Math.random().toString(36).substr(2, 9);
-    const historyEntry: LotteryHistory = {
-      id: historyId,
-      timestamp: new Date().toISOString(),
-      winnerName: winner.name,
-      winnerId: winner.id,
-      fullList: shuffled.map(emp => ({ 
-        id: emp.id, 
-        name: emp.name, 
-        photoUrl: emp.photoUrl 
-      }))
-    };
-    batch.set(doc(db, 'history', historyId), historyEntry);
+    console.log('Full new order size:', fullNewOrder.length);
 
     try {
-      await batch.commit();
-      setIsShuffling(false);
+      // Process in batches of 400 to stay safe under 500 limit
+      const chunks = [];
+      for (let i = 0; i < fullNewOrder.length; i += 400) {
+        chunks.push(fullNewOrder.slice(i, i + 400));
+      }
+
+      let absoluteIdx = 0;
+      for (const chunk of chunks) {
+        const batch = writeBatch(db);
+        chunk.forEach((emp) => {
+          batch.update(doc(db, 'queue', emp.id), { position: absoluteIdx + 1 });
+          absoluteIdx++;
+        });
+        await batch.commit();
+      }
+
+      // Add to history (separate batch/write)
+      const historyId = Math.random().toString(36).substr(2, 9);
+      const historyEntry: LotteryHistory = {
+        id: historyId,
+        timestamp: new Date().toISOString(),
+        winnerName: winner.name,
+        winnerId: winner.id,
+        fullList: shuffled.map(emp => ({ 
+          id: emp.id, 
+          name: emp.name, 
+          ...(emp.photoUrl ? { photoUrl: emp.photoUrl } : {})
+        }))
+      };
+      await setDoc(doc(db, 'history', historyId), historyEntry);
+
+      console.log('Sorteio concluído com sucesso. Vencedor:', winner.name);
       addNotification(`Sorteio realizado! Vencedor: ${winner.name}`, 'success');
+      return true;
     } catch (err) {
+      console.error('Erro fatal no handleShuffle:', err);
       const errMsg = err instanceof Error ? err.message : String(err);
       addNotification('Erro ao realizar sorteio.', 'error', errMsg);
       handleFirestoreError(err, OperationType.WRITE, 'queue/shuffle');
-      setIsShuffling(false);
+      return false;
     }
   };
 
@@ -1738,10 +1720,6 @@ function AppContent() {
 
   return (
     <div className="min-h-screen pb-20">
-      <AnimatePresence>
-        {isShuffling && <LotteryOverlay onComplete={completeShuffle} />}
-      </AnimatePresence>
-
       {view === 'login' && <Login onLogin={handleLogin} onBack={() => setView('public')} />}
       
       {/* Notifications */}
