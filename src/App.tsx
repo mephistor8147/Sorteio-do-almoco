@@ -401,6 +401,7 @@ const AdminPanel = ({
   onDeleteHistoryItem,
   history,
   onClearHistory,
+  onViewPublic,
   isLoadingQueue,
   isLoadingHistory,
   isLoadingSettings
@@ -418,6 +419,7 @@ const AdminPanel = ({
   onDeleteHistoryItem: (id: string) => void,
   history: LotteryHistory[],
   onClearHistory: () => void,
+  onViewPublic: () => void,
   isLoadingQueue: boolean,
   isLoadingHistory: boolean,
   isLoadingSettings: boolean
@@ -593,12 +595,20 @@ const AdminPanel = ({
             <h2 className="text-3xl md:text-5xl font-light uppercase tracking-tight text-white">Painel <span className="font-black">Admin</span></h2>
             <p className="text-brand-secondary text-[10px] font-black uppercase tracking-[0.4em] mt-2">Gerenciamento Local</p>
           </div>
-          <button 
-            onClick={onLogout}
-            className="flex items-center justify-center gap-2 px-6 py-4 sm:py-3 rounded-2xl glass text-red-400 hover:bg-red-500/10 transition-all text-xs font-black uppercase tracking-widest w-full sm:w-auto"
-          >
-            <LogOut size={16} /> Sair
-          </button>
+          <div className="flex items-center gap-3 w-full sm:w-auto">
+            <button 
+              onClick={onViewPublic}
+              className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-4 sm:py-3 rounded-2xl glass text-white hover:bg-white/10 transition-all text-xs font-black uppercase tracking-widest"
+            >
+              <ArrowLeft size={16} /> Ver Site
+            </button>
+            <button 
+              onClick={onLogout}
+              className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-4 sm:py-3 rounded-2xl glass text-red-400 hover:bg-red-500/10 transition-all text-xs font-black uppercase tracking-widest"
+            >
+              <LogOut size={16} /> Sair
+            </button>
+          </div>
         </div>
 
         <div className="flex flex-wrap gap-2 mb-8 p-1 bg-white/5 rounded-2xl w-fit">
@@ -1766,6 +1776,7 @@ function AppContent() {
           onDeleteHistoryItem={deleteHistoryItem}
           history={history}
           onClearHistory={clearHistory}
+          onViewPublic={() => setView('public')}
           isLoadingQueue={isLoadingQueue}
           isLoadingHistory={isLoadingHistory}
           isLoadingSettings={isLoadingSettings}
