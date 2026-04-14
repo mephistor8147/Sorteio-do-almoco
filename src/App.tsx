@@ -168,8 +168,8 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
 
 // --- Skeletons ---
 
-const SkeletonItem = () => (
-  <div className="glass p-5 md:p-6 rounded-[32px] border border-white/5 animate-pulse flex items-center justify-between">
+const SkeletonItem = React.forwardRef<HTMLDivElement>((_, ref) => (
+  <div ref={ref} className="glass p-5 md:p-6 rounded-[32px] border border-white/5 animate-pulse flex items-center justify-between">
     <div className="flex items-center gap-4 md:gap-6">
       <div className="w-12 h-12 md:w-16 md:h-16 rounded-2xl bg-white/5" />
       <div className="space-y-2">
@@ -179,13 +179,13 @@ const SkeletonItem = () => (
     </div>
     <div className="w-10 h-10 rounded-2xl bg-white/5" />
   </div>
-);
+));
 
-const SkeletonQueue = () => (
-  <div className="space-y-4">
+const SkeletonQueue = React.forwardRef<HTMLDivElement>((_, ref) => (
+  <div ref={ref} className="space-y-4">
     {[1, 2, 3, 4, 5].map(i => <SkeletonItem key={i} />)}
   </div>
-);
+));
 
 const SkeletonHistoryItem = () => (
   <div className="glass p-6 rounded-[32px] border border-white/5 animate-pulse flex items-center justify-between">
@@ -1730,6 +1730,13 @@ function AppContent() {
 
   // Firestore Real-time Sync: Admins
   useEffect(() => {
+    // We only fetch admins if we are authenticated to avoid permission errors
+    // or if we want to support dynamic admin checks after login.
+    if (!isAuthenticated && !auth.currentUser) {
+      setIsLoadingAdmins(false);
+      return;
+    }
+
     setIsLoadingAdmins(true);
     const unsubscribe = onSnapshot(collection(db, 'admins'), (snapshot) => {
       console.log('Admins snapshot received. Size:', snapshot.size);
@@ -1737,12 +1744,14 @@ function AppContent() {
       setAdmins(items);
       setIsLoadingAdmins(false);
     }, (error) => {
-      console.error('Error fetching admins:', error);
-      // Don't throw here to avoid crashing the app, just log and stop loading
+      // Only log if it's not a permission error during initial load
+      if (!error.message.includes('permissions')) {
+        console.error('Error fetching admins:', error);
+      }
       setIsLoadingAdmins(false);
     });
     return () => unsubscribe();
-  }, []);
+  }, [isAuthenticated]);
 
   // Firestore Real-time Sync: Settings
   useEffect(() => {
