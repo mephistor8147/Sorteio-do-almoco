@@ -1416,14 +1416,15 @@ function AppContent() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isShuffling, setIsShuffling] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [notifications, setNotifications] = useState<{ id: string, message: string, type: 'success' | 'error' | 'info' }[]>([]);
+  const [notifications, setNotifications] = useState<{ id: string, message: string, type: 'success' | 'error' | 'info', description?: string }[]>([]);
 
-  const addNotification = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
+  const addNotification = (message: string, type: 'success' | 'error' | 'info' = 'info', description?: string) => {
     const id = Math.random().toString(36).substr(2, 9);
-    setNotifications(prev => [...prev, { id, message, type }]);
+    setNotifications(prev => [...prev, { id, message, type, description }]);
+    const duration = type === 'error' ? 8000 : 4000;
     setTimeout(() => {
       setNotifications(prev => prev.filter(n => n.id !== id));
-    }, 4000);
+    }, duration);
   };
 
   const [queue, setQueue] = useState<Employee[]>([]);
@@ -1561,8 +1562,9 @@ function AppContent() {
       await setDoc(doc(db, 'queue', id), newEmp);
       addNotification(`${name} adicionado à fila!`, 'success');
     } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      addNotification('Erro ao adicionar funcionário.', 'error', errMsg);
       handleFirestoreError(err, OperationType.CREATE, `queue/${id}`);
-      addNotification('Erro ao adicionar funcionário.', 'error');
     }
   };
 
@@ -1571,8 +1573,9 @@ function AppContent() {
       await updateDoc(doc(db, 'queue', id), { name, photoUrl });
       addNotification(`${name} atualizado com sucesso!`, 'success');
     } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      addNotification('Erro ao atualizar funcionário.', 'error', errMsg);
       handleFirestoreError(err, OperationType.UPDATE, `queue/${id}`);
-      addNotification('Erro ao atualizar funcionário.', 'error');
     }
   };
 
@@ -1581,6 +1584,8 @@ function AppContent() {
       await updateDoc(doc(db, 'queue', id), { isActive: !currentStatus });
       addNotification(`Status de ${queue.find(e => e.id === id)?.name} atualizado.`, 'info');
     } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      addNotification('Erro ao atualizar status.', 'error', errMsg);
       handleFirestoreError(err, OperationType.UPDATE, `queue/${id}`);
     }
   };
@@ -1598,6 +1603,8 @@ function AppContent() {
       await batch.commit();
       addNotification(`${empName} removido da fila.`, 'info');
     } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      addNotification('Erro ao remover funcionário.', 'error', errMsg);
       handleFirestoreError(err, OperationType.DELETE, `queue/${id}`);
     }
   };
@@ -1607,8 +1614,9 @@ function AppContent() {
       await setDoc(doc(db, 'settings', 'global'), newSettings);
       addNotification('Configurações salvas com sucesso!', 'success');
     } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      addNotification('Erro ao salvar configurações.', 'error', errMsg);
       handleFirestoreError(err, OperationType.WRITE, 'settings/global');
-      addNotification('Erro ao salvar configurações.', 'error');
     }
   };
 
@@ -1660,6 +1668,8 @@ function AppContent() {
       setIsShuffling(false);
       addNotification(`Sorteio realizado! Vencedor: ${winner.name}`, 'success');
     } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      addNotification('Erro ao realizar sorteio.', 'error', errMsg);
       handleFirestoreError(err, OperationType.WRITE, 'queue/shuffle');
       setIsShuffling(false);
     }
@@ -1685,8 +1695,9 @@ function AppContent() {
       
       addNotification('Histórico limpo com sucesso!', 'success');
     } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      addNotification('Erro ao limpar histórico.', 'error', errMsg);
       handleFirestoreError(err, OperationType.DELETE, 'history/clear');
-      addNotification('Erro ao limpar histórico.', 'error');
     }
   };
 
@@ -1695,6 +1706,8 @@ function AppContent() {
       await deleteDoc(doc(db, 'history', id));
       addNotification('Registro removido do histórico.', 'info');
     } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      addNotification('Erro ao remover item do histórico.', 'error', errMsg);
       handleFirestoreError(err, OperationType.DELETE, `history/${id}`);
     }
   };
@@ -1711,7 +1724,10 @@ function AppContent() {
         batch.set(doc(db, 'queue', emp.id), emp);
       });
       await batch.commit();
+      addNotification('Banco de dados atualizado com sucesso!', 'success');
     } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      addNotification('Erro ao atualizar banco de dados.', 'error', errMsg);
       handleFirestoreError(err, OperationType.WRITE, 'queue/bulk');
     }
   };
@@ -1746,7 +1762,12 @@ function AppContent() {
               {n.type === 'success' && <Check size={18} />}
               {n.type === 'error' && <AlertCircle size={18} />}
               {n.type === 'info' && <Sparkles size={18} />}
-              <span className="text-xs font-bold uppercase tracking-widest">{n.message}</span>
+              <div className="flex flex-col gap-0.5">
+                <span className="text-xs font-bold uppercase tracking-widest">{n.message}</span>
+                {n.description && (
+                  <span className="text-[8px] opacity-70 font-medium leading-tight line-clamp-2">{n.description}</span>
+                )}
+              </div>
             </motion.div>
           ))}
         </AnimatePresence>
