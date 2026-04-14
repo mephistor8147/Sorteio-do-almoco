@@ -25,7 +25,8 @@ import {
   Check,
   X,
   ChevronDown,
-  Camera
+  Camera,
+  Edit2
 } from 'lucide-react';
 import { 
   auth, 
@@ -462,6 +463,8 @@ const AdminPanel = ({
   onUpdateSettings,
   onShuffle,
   onSetQueue,
+  onUpdateEmployee,
+  onDeleteHistoryItem,
   history,
   onClearHistory,
   isLoadingQueue,
@@ -477,6 +480,8 @@ const AdminPanel = ({
   onUpdateSettings: (settings: AppSettings) => void,
   onShuffle: () => void,
   onSetQueue: (queue: Employee[]) => void,
+  onUpdateEmployee: (id: string, name: string, photoUrl?: string) => void,
+  onDeleteHistoryItem: (id: string) => void,
   history: LotteryHistory[],
   onClearHistory: () => void,
   isLoadingQueue: boolean,
@@ -485,6 +490,7 @@ const AdminPanel = ({
 }) => {
   const [newName, setNewName] = useState('');
   const [newPhotoUrl, setNewPhotoUrl] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [activeTab, setActiveTab] = useState<'queue' | 'settings' | 'lottery' | 'database' | 'history'>('queue');
 
@@ -686,7 +692,7 @@ const AdminPanel = ({
             <div className="md:col-span-2 space-y-8">
               <div className="glass p-6 md:p-8 rounded-[32px] md:rounded-[40px] space-y-6">
                 <h3 className="text-lg md:text-xl font-bold uppercase tracking-tight flex items-center gap-3">
-                  <Users className="text-brand-secondary" size={20} /> Adicionar Funcionário
+                  <Users className="text-brand-secondary" size={20} /> {editingId ? 'Editar Funcionário' : 'Adicionar Funcionário'}
                 </h3>
                 <div className="space-y-4">
                   <div className="flex flex-col sm:flex-row gap-3">
@@ -716,18 +722,37 @@ const AdminPanel = ({
                       placeholder="Nome do funcionário..."
                       className="flex-1 bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all text-sm md:text-base"
                     />
-                    <button 
-                      onClick={() => {
-                        if (newName.trim()) {
-                          onAdd(newName, newPhotoUrl || undefined);
-                          setNewName('');
-                          setNewPhotoUrl('');
-                        }
-                      }}
-                      className="h-14 sm:w-14 bg-brand-primary rounded-2xl flex items-center justify-center text-white shadow-lg shadow-brand-primary/20 hover:scale-105 active:scale-95 transition-all w-full sm:w-auto"
-                    >
-                      <Plus size={24} />
-                    </button>
+                    <div className="flex gap-2">
+                      <button 
+                        onClick={() => {
+                          if (newName.trim()) {
+                            if (editingId) {
+                              onUpdateEmployee(editingId, newName, newPhotoUrl || undefined);
+                              setEditingId(null);
+                            } else {
+                              onAdd(newName, newPhotoUrl || undefined);
+                            }
+                            setNewName('');
+                            setNewPhotoUrl('');
+                          }
+                        }}
+                        className="h-14 flex-1 sm:w-14 bg-brand-primary rounded-2xl flex items-center justify-center text-white shadow-lg shadow-brand-primary/20 hover:scale-105 active:scale-95 transition-all"
+                      >
+                        {editingId ? <Check size={24} /> : <Plus size={24} />}
+                      </button>
+                      {editingId && (
+                        <button 
+                          onClick={() => {
+                            setEditingId(null);
+                            setNewName('');
+                            setNewPhotoUrl('');
+                          }}
+                          className="h-14 w-14 bg-white/5 border border-white/10 rounded-2xl flex items-center justify-center text-white/40 hover:text-red-400 transition-all"
+                        >
+                          <X size={24} />
+                        </button>
+                      )}
+                    </div>
                   </div>
                   <div className="flex items-center gap-2">
                     <input 
@@ -773,6 +798,18 @@ const AdminPanel = ({
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
+                          <button 
+                            onClick={() => {
+                              setEditingId(emp.id);
+                              setNewName(emp.name);
+                              setNewPhotoUrl(emp.photoUrl || '');
+                              window.scrollTo({ top: 0, behavior: 'smooth' });
+                            }}
+                            className="w-10 h-10 rounded-xl bg-white/5 text-white/40 flex items-center justify-center hover:bg-brand-primary hover:text-white transition-all"
+                            title="Editar"
+                          >
+                            <Edit2 size={16} />
+                          </button>
                           <button 
                             onClick={() => onToggleActive(emp.id, emp.isActive)}
                             className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${emp.isActive ? 'bg-green-500/10 text-green-400 hover:bg-green-500 hover:text-white' : 'bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white'}`}
@@ -959,6 +996,50 @@ const AdminPanel = ({
               </div>
             </div>
 
+            <div className="glass p-8 rounded-[40px] space-y-6">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-red-500/10 rounded-2xl flex items-center justify-center text-red-500">
+                  <Trash2 size={24} />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold uppercase tracking-tight text-white">Limpeza de Dados</h3>
+                  <p className="text-white/40 text-xs">Ações irreversíveis para manutenção do sistema.</p>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <button 
+                  onClick={() => {
+                    if (confirm('Tem certeza que deseja limpar todo o histórico de sorteios?')) {
+                      onClearHistory();
+                    }
+                  }}
+                  className="p-6 rounded-3xl bg-white/5 border border-white/5 hover:bg-red-500/10 hover:border-red-500/20 transition-all text-left group"
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-white/60 group-hover:text-red-400">Limpar Histórico</span>
+                    <Clock size={16} className="text-white/20 group-hover:text-red-400" />
+                  </div>
+                  <p className="text-[10px] text-white/30 leading-relaxed">Remove permanentemente todos os registros de sorteios realizados.</p>
+                </button>
+
+                <button 
+                  onClick={() => {
+                    if (confirm('Tem certeza que deseja limpar toda a fila de funcionários?')) {
+                      queue.forEach(e => onRemove(e.id));
+                    }
+                  }}
+                  className="p-6 rounded-3xl bg-white/5 border border-white/5 hover:bg-red-500/10 hover:border-red-500/20 transition-all text-left group"
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-white/60 group-hover:text-red-400">Limpar Fila</span>
+                    <Users size={16} className="text-white/20 group-hover:text-red-400" />
+                  </div>
+                  <p className="text-[10px] text-white/30 leading-relaxed">Remove todos os funcionários cadastrados no sistema.</p>
+                </button>
+              </div>
+            </div>
+
             <AnimatePresence>
               {dbStatus && (
                 <motion.div 
@@ -1030,6 +1111,17 @@ const AdminPanel = ({
                         <div className="text-brand-secondary text-[10px] font-black uppercase tracking-widest">
                           {expandedHistory === item.id ? 'Ocultar Lista' : 'Ver Lista Completa'}
                         </div>
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (confirm('Excluir este registro do histórico?')) {
+                              onDeleteHistoryItem(item.id);
+                            }
+                          }}
+                          className="p-2 rounded-lg bg-white/5 text-white/20 hover:bg-red-500/10 hover:text-red-500 transition-all"
+                        >
+                          <Trash2 size={14} />
+                        </button>
                         <ChevronDown size={16} className={`text-white/20 transition-transform ${expandedHistory === item.id ? 'rotate-180' : ''}`} />
                       </div>
                     </motion.div>
@@ -1474,6 +1566,16 @@ function AppContent() {
     }
   };
 
+  const updateEmployee = async (id: string, name: string, photoUrl?: string) => {
+    try {
+      await updateDoc(doc(db, 'queue', id), { name, photoUrl });
+      addNotification(`${name} atualizado com sucesso!`, 'success');
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `queue/${id}`);
+      addNotification('Erro ao atualizar funcionário.', 'error');
+    }
+  };
+
   const toggleEmployeeActive = async (id: string, currentStatus: boolean) => {
     try {
       await updateDoc(doc(db, 'queue', id), { isActive: !currentStatus });
@@ -1511,13 +1613,20 @@ function AppContent() {
   };
 
   const handleShuffle = () => {
-    if (queue.length < 2) return;
+    const activeEmployees = queue.filter(emp => emp.isActive);
+    if (activeEmployees.length < 2) {
+      addNotification('É necessário pelo menos 2 funcionários ativos para o sorteio.', 'error');
+      return;
+    }
     setIsShuffling(true);
   };
 
   const completeShuffle = async () => {
     const activeEmployees = queue.filter(emp => emp.isActive);
-    if (activeEmployees.length < 2) return;
+    if (activeEmployees.length < 2) {
+      setIsShuffling(false);
+      return;
+    }
 
     const shuffled = [...activeEmployees].sort(() => Math.random() - 0.5);
     const winner = shuffled[0];
@@ -1549,23 +1658,44 @@ function AppContent() {
     try {
       await batch.commit();
       setIsShuffling(false);
+      addNotification(`Sorteio realizado! Vencedor: ${winner.name}`, 'success');
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, 'queue/shuffle');
+      setIsShuffling(false);
     }
   };
 
   const clearHistory = async () => {
     if (history.length === 0) return;
     try {
-      const batch = writeBatch(db);
-      history.forEach(item => {
-        batch.delete(doc(db, 'history', item.id));
-      });
-      await batch.commit();
+      // Firestore batch limit is 500 operations. 
+      // We'll process in chunks if needed.
+      const chunks = [];
+      for (let i = 0; i < history.length; i += 500) {
+        chunks.push(history.slice(i, i + 500));
+      }
+
+      for (const chunk of chunks) {
+        const batch = writeBatch(db);
+        chunk.forEach(item => {
+          batch.delete(doc(db, 'history', item.id));
+        });
+        await batch.commit();
+      }
+      
       addNotification('Histórico limpo com sucesso!', 'success');
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, 'history/clear');
       addNotification('Erro ao limpar histórico.', 'error');
+    }
+  };
+
+  const deleteHistoryItem = async (id: string) => {
+    try {
+      await deleteDoc(doc(db, 'history', id));
+      addNotification('Registro removido do histórico.', 'info');
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `history/${id}`);
     }
   };
 
@@ -1633,6 +1763,8 @@ function AppContent() {
           onUpdateSettings={updateSettings}
           onShuffle={handleShuffle}
           onSetQueue={setQueueBulk}
+          onUpdateEmployee={updateEmployee}
+          onDeleteHistoryItem={deleteHistoryItem}
           history={history}
           onClearHistory={clearHistory}
           isLoadingQueue={isLoadingQueue}
