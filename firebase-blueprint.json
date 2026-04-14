@@ -33,50 +33,19 @@
       "description": "Global application settings.",
       "type": "object",
       "properties": {
-        "heroTitleLine1": {
-          "type": "string"
-        },
-        "heroTitleLine2": {
-          "type": "string"
-        },
-        "heroSubtitle": {
-          "type": "string"
-        },
-        "heroDescription": {
-          "type": "string"
-        },
-        "lotteryTime": {
-          "type": "string",
-          "format": "time"
-        },
-        "lotteryDays": {
-          "type": "array",
-          "items": {
-            "type": "number"
-          }
-        },
-        "lastLotteryDate": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "headerTitleLine1": {
-          "type": "string"
-        },
-        "headerTitleLine2": {
-          "type": "string"
-        },
-        "headerSubtitle": {
-          "type": "string"
-        },
-        "queueTitleLine1": {
-          "type": "string"
-        },
-        "queueTitleLine2": {
-          "type": "string"
-        },
-        "queueSubtitle": {
-          "type": "string"
-        }
+        "heroTitleLine1": { "type": "string" },
+        "heroTitleLine2": { "type": "string" },
+        "heroSubtitle": { "type": "string" },
+        "heroDescription": { "type": "string" },
+        "lotteryTime": { "type": "string", "format": "time" },
+        "lotteryDays": { "type": "array", "items": { "type": "number" } },
+        "lastLotteryDate": { "type": "string", "format": "date-time" },
+        "headerTitleLine1": { "type": "string" },
+        "headerTitleLine2": { "type": "string" },
+        "headerSubtitle": { "type": "string" },
+        "queueTitleLine1": { "type": "string" },
+        "queueTitleLine2": { "type": "string" },
+        "queueSubtitle": { "type": "string" }
       },
       "required": ["heroTitleLine1", "heroTitleLine2", "heroSubtitle", "heroDescription", "lotteryTime", "lotteryDays", "headerTitleLine1", "headerTitleLine2", "headerSubtitle", "queueTitleLine1", "queueTitleLine2", "queueSubtitle"]
     },
@@ -85,19 +54,10 @@
       "description": "A record of a past lottery draw.",
       "type": "object",
       "properties": {
-        "id": {
-          "type": "string"
-        },
-        "timestamp": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "winnerName": {
-          "type": "string"
-        },
-        "winnerId": {
-          "type": "string"
-        },
+        "id": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "winnerName": { "type": "string" },
+        "winnerId": { "type": "string" },
         "fullList": {
           "type": "array",
           "items": {
@@ -117,29 +77,13 @@
       "description": "An administrator user.",
       "type": "object",
       "properties": {
-        "id": {
-          "type": "string"
-        },
-        "name": {
-          "type": "string"
-        },
-        "email": {
-          "type": "string",
-          "format": "email"
-        },
-        "password": {
-          "type": "string"
-        },
-        "photoUrl": {
-          "type": "string"
-        },
-        "isActive": {
-          "type": "boolean"
-        },
-        "createdAt": {
-          "type": "string",
-          "format": "date-time"
-        }
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "password": { "type": "string" },
+        "photoUrl": { "type": "string" },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "name", "email", "isActive", "createdAt"]
     }
