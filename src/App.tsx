@@ -454,11 +454,30 @@ const AdminPanel = ({
   const [adminPassword, setAdminPassword] = useState('');
   const [adminPhotoUrl, setAdminPhotoUrl] = useState('');
   const [editingAdminId, setEditingAdminId] = useState<string | null>(null);
+  const [isAdminUploading, setIsAdminUploading] = useState(false);
 
   const [activeTab, setActiveTab] = useState<'queue' | 'settings' | 'lottery' | 'database' | 'history' | 'admins'>('queue');
 
   const [isShufflingLocal, setIsShufflingLocal] = useState(false);
   const [shuffleDisplay, setShuffleDisplay] = useState<Employee | null>(null);
+
+  const handleAdminFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsAdminUploading(true);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64 = event.target?.result as string;
+      setAdminPhotoUrl(base64);
+      setIsAdminUploading(false);
+    };
+    reader.onerror = () => {
+      setIsAdminUploading(false);
+      alert("Erro ao ler arquivo.");
+    };
+    reader.readAsDataURL(file);
+  };
 
   const handleShuffleClick = async () => {
     const activeEmployees = queue.filter(e => e.isActive);
@@ -1263,14 +1282,41 @@ const AdminPanel = ({
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-4">URL da Foto (Opcional)</label>
-                    <input 
-                      type="text"
-                      value={adminPhotoUrl}
-                      onChange={(e) => setAdminPhotoUrl(e.target.value)}
-                      placeholder="https://..."
-                      className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all"
-                    />
+                    <label className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-4">Foto do Administrador</label>
+                    <div className="flex items-center gap-4">
+                      <div className="w-16 h-16 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center overflow-hidden relative group">
+                        {adminPhotoUrl ? (
+                          <>
+                            <img src={adminPhotoUrl} alt="Preview" className="w-full h-full object-cover" />
+                            <button 
+                              onClick={() => setAdminPhotoUrl('')}
+                              className="absolute inset-0 bg-red-500/80 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white"
+                            >
+                              <X size={20} />
+                            </button>
+                          </>
+                        ) : (
+                          <Camera size={24} className="text-white/20" />
+                        )}
+                        {isAdminUploading && (
+                          <div className="absolute inset-0 bg-brand-bg/60 flex items-center justify-center">
+                            <div className="w-5 h-5 border-2 border-brand-primary/30 border-t-brand-primary rounded-full animate-spin" />
+                          </div>
+                        )}
+                      </div>
+                      <label className="flex-1">
+                        <div className="w-full bg-white/5 border border-white/10 border-dashed rounded-2xl py-4 px-6 text-white/40 text-[10px] font-black uppercase tracking-widest text-center cursor-pointer hover:bg-white/10 hover:border-brand-primary/30 transition-all flex items-center justify-center gap-2">
+                          <Upload size={14} />
+                          {adminPhotoUrl ? 'Trocar Foto' : 'Enviar Foto'}
+                        </div>
+                        <input 
+                          type="file"
+                          accept="image/*"
+                          onChange={handleAdminFileUpload}
+                          className="hidden"
+                        />
+                      </label>
+                    </div>
                   </div>
                 </div>
                 <div className="flex gap-3">
