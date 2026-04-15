@@ -2634,7 +2634,14 @@ function AppContent() {
                   <h3 className="text-2xl md:text-4xl font-light uppercase tracking-tight text-white mb-2">
                     {settings.queueTitleLine1} <span className="font-black">{settings.queueTitleLine2}</span>
                   </h3>
-                  <p className="text-[10px] font-black uppercase tracking-[0.4em] text-brand-secondary">{settings.queueSubtitle}</p>
+                  <p className="text-[10px] font-black uppercase tracking-[0.4em] text-brand-secondary">
+                    {settings.queueSubtitle}
+                    {settings.lastLotteryDate && (
+                      <span className="ml-2 opacity-60">
+                        • {new Date(settings.lastLotteryDate + 'T12:00:00').toLocaleDateString('pt-BR')}
+                      </span>
+                    )}
+                  </p>
                 </div>
                 
                 <div className="relative group flex-1 max-w-md">
