@@ -27,3 +27,12 @@
   background: radial-gradient(circle at top right, rgba(255, 122, 69, 0.15), transparent),
               radial-gradient(circle at bottom left, rgba(247, 178, 103, 0.1), transparent);
 }
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

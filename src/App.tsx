@@ -254,37 +254,38 @@ const SkeletonSettings = () => (
 // --- Components ---
 
 const Header = ({ onAdminClick, isAuthenticated, settings }: { onAdminClick: () => void, isAuthenticated: boolean, settings: AppSettings }) => (
-  <header className="px-6 py-8 flex items-center justify-between sticky top-0 z-50 bg-brand-bg/80 backdrop-blur-md">
-    <div className="flex items-center gap-3">
-      <div className="w-10 h-10 bg-brand-primary rounded-full flex items-center justify-center shadow-lg shadow-brand-primary/20">
-        <Leaf className="text-white fill-white" size={20} />
+  <header className="px-4 md:px-6 py-4 md:py-8 flex items-center justify-between sticky top-0 z-50 bg-brand-bg/80 backdrop-blur-md">
+    <div className="flex items-center gap-2 md:gap-3">
+      <div className="w-8 h-8 md:w-10 md:h-10 bg-brand-primary rounded-full flex items-center justify-center shadow-lg shadow-brand-primary/20 shrink-0">
+        <Leaf className="text-white fill-white" size={16} />
       </div>
-      <div>
-        <h1 className="text-sm font-black tracking-[0.2em] text-white leading-none">
-          {settings.headerTitleLine1} <span className="block sm:inline">{settings.headerTitleLine2}</span>
+      <div className="min-w-0">
+        <h1 className="text-[10px] md:text-sm font-black tracking-[0.1em] md:tracking-[0.2em] text-white leading-tight truncate">
+          {settings.headerTitleLine1} <span className="hidden sm:inline">{settings.headerTitleLine2}</span>
         </h1>
-        <p className="text-[10px] font-bold tracking-[0.3em] text-brand-secondary mt-1 uppercase">{settings.headerSubtitle}</p>
+        <p className="text-[8px] md:text-[10px] font-bold tracking-[0.2em] md:tracking-[0.3em] text-brand-secondary mt-0.5 uppercase truncate">{settings.headerSubtitle}</p>
       </div>
     </div>
     
-    <div className="flex items-center gap-3">
+    <div className="flex items-center gap-2 md:gap-3 shrink-0">
       {settings.downloadUrl && (
         <a 
           href={settings.downloadUrl}
           download={settings.downloadFileName || 'app'}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-brand-primary/10 text-brand-primary hover:bg-brand-primary hover:text-white transition-all text-[10px] font-black uppercase tracking-widest"
+          className="flex items-center gap-2 px-3 md:px-4 py-2 rounded-xl bg-brand-primary/10 text-brand-primary hover:bg-brand-primary hover:text-white transition-all text-[8px] md:text-[10px] font-black uppercase tracking-widest"
         >
-          <Download size={14} />
-          Baixa App
+          <Download size={12} className="md:w-3.5 md:h-3.5" />
+          <span className="hidden xs:inline">Baixa App</span>
+          <span className="xs:hidden">App</span>
         </a>
       )}
       <button 
         onClick={onAdminClick}
-        className={`w-10 h-10 rounded-2xl glass flex items-center justify-center transition-all ${isAuthenticated ? 'text-brand-secondary' : 'text-white/70 hover:text-white'}`}
+        className={`w-8 h-8 md:w-10 md:h-10 rounded-xl md:rounded-2xl glass flex items-center justify-center transition-all ${isAuthenticated ? 'text-brand-secondary' : 'text-white/70 hover:text-white'}`}
       >
-        {isAuthenticated ? <Settings size={18} /> : <Lock size={18} />}
+        {isAuthenticated ? <Settings size={16} /> : <Lock size={16} />}
       </button>
     </div>
   </header>
@@ -350,44 +351,44 @@ const Login = ({ onLogin, onBack }: { onLogin: () => void, onBack: () => void })
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-6 py-12 bg-brand-bg">
+    <div className="min-h-screen flex items-center justify-center px-4 md:px-6 py-8 md:py-12 bg-brand-bg">
       <motion.div 
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="w-full max-w-md glass p-10 rounded-[40px] shadow-2xl relative overflow-hidden"
+        className="w-full max-w-md glass p-6 md:p-10 rounded-[32px] md:rounded-[40px] shadow-2xl relative overflow-hidden"
       >
-        <button onClick={onBack} className="absolute top-6 left-6 text-white/30 hover:text-white transition-colors">
+        <button onClick={onBack} className="absolute top-4 md:top-6 left-4 md:left-6 text-white/30 hover:text-white transition-colors">
           <ArrowLeft size={20} />
         </button>
         
-        <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-brand-primary rounded-3xl flex items-center justify-center text-white mx-auto mb-4 shadow-xl rotate-3">
-            <Lock size={28} />
+        <div className="text-center mb-6 md:mb-8">
+          <div className="w-12 h-12 md:w-16 md:h-16 bg-brand-primary rounded-2xl md:rounded-3xl flex items-center justify-center text-white mx-auto mb-4 shadow-xl rotate-3">
+            <Lock size={24} className="md:w-7 md:h-7" />
           </div>
-          <h2 className="text-2xl font-light uppercase tracking-tight text-white">Acesso Restrito</h2>
-          <p className="text-brand-secondary text-[8px] font-black uppercase tracking-[0.3em] mt-1">Área Administrativa</p>
+          <h2 className="text-xl md:text-2xl font-light uppercase tracking-tight text-white">Acesso Restrito</h2>
+          <p className="text-brand-secondary text-[7px] md:text-[8px] font-black uppercase tracking-[0.3em] mt-1">Área Administrativa</p>
         </div>
 
-        <form onSubmit={handleEmailLogin} className="space-y-4 mb-8">
+        <form onSubmit={handleEmailLogin} className="space-y-3 md:space-y-4 mb-6 md:mb-8">
           <div className="space-y-1">
-            <label className="text-[8px] font-black uppercase tracking-[0.2em] text-white/40 ml-4">E-mail</label>
+            <label className="text-[7px] md:text-[8px] font-black uppercase tracking-[0.2em] text-white/40 ml-4">E-mail</label>
             <input 
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="admin@exemplo.com"
-              className="w-full bg-white/5 border border-white/10 rounded-2xl py-3 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all text-sm"
+              className="w-full bg-white/5 border border-white/10 rounded-xl md:rounded-2xl py-3 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all text-sm"
               required
             />
           </div>
           <div className="space-y-1">
-            <label className="text-[8px] font-black uppercase tracking-[0.2em] text-white/40 ml-4">Senha</label>
+            <label className="text-[7px] md:text-[8px] font-black uppercase tracking-[0.2em] text-white/40 ml-4">Senha</label>
             <input 
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
-              className="w-full bg-white/5 border border-white/10 rounded-2xl py-3 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all text-sm"
+              className="w-full bg-white/5 border border-white/10 rounded-xl md:rounded-2xl py-3 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all text-sm"
               required
             />
           </div>
@@ -395,25 +396,25 @@ const Login = ({ onLogin, onBack }: { onLogin: () => void, onBack: () => void })
           <button 
             type="submit"
             disabled={isLoading}
-            className="w-full bg-brand-primary text-white font-black uppercase tracking-[0.2em] py-4 rounded-2xl shadow-lg transition-all active:scale-95 disabled:opacity-50 disabled:scale-100"
+            className="w-full bg-brand-primary text-white font-black uppercase tracking-[0.2em] py-3.5 md:py-4 rounded-xl md:rounded-2xl shadow-lg transition-all active:scale-95 disabled:opacity-50 disabled:scale-100"
           >
             {isLoading ? "Entrando..." : "Entrar"}
           </button>
         </form>
 
-        <div className="relative mb-8">
+        <div className="relative mb-6 md:mb-8">
           <div className="absolute inset-0 flex items-center">
             <div className="w-full border-t border-white/10"></div>
           </div>
-          <div className="relative flex justify-center text-[8px] uppercase tracking-[0.3em]">
-            <span className="bg-brand-bg px-4 text-white/30">Ou continue com</span>
+          <div className="relative flex justify-center text-[7px] md:text-[8px] uppercase tracking-[0.3em]">
+            <span className="bg-[#1a3442] px-4 text-white/30">Ou continue com</span>
           </div>
         </div>
 
-        <div className="space-y-6">
+        <div className="space-y-4 md:space-y-6">
           <button 
             onClick={handleGoogleLogin}
-            className="w-full bg-white text-brand-bg font-black uppercase tracking-[0.2em] py-4 rounded-2xl shadow-lg flex items-center justify-center gap-3 transition-all active:scale-95"
+            className="w-full bg-white text-brand-bg font-black uppercase tracking-[0.2em] py-3.5 md:py-4 rounded-xl md:rounded-2xl shadow-lg flex items-center justify-center gap-3 transition-all active:scale-95"
           >
             <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5" />
             Google
@@ -423,13 +424,13 @@ const Login = ({ onLogin, onBack }: { onLogin: () => void, onBack: () => void })
             <motion.p 
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="text-red-400 text-[10px] font-bold text-center uppercase tracking-widest mt-2"
+              className="text-red-400 text-[9px] md:text-[10px] font-bold text-center uppercase tracking-widest mt-2"
             >
               {error}
             </motion.p>
           )}
           
-          <p className="text-white/30 text-[8px] text-center uppercase tracking-widest leading-relaxed">
+          <p className="text-white/30 text-[7px] md:text-[8px] text-center uppercase tracking-widest leading-relaxed">
             Apenas administradores autorizados têm acesso às configurações do sistema.
           </p>
         </div>
@@ -782,27 +783,29 @@ const AdminPanel = ({
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-2 mb-8 p-1 bg-white/5 rounded-2xl w-fit">
-          {[
-            { id: 'queue', label: 'Fila' },
-            { id: 'employees', label: 'Funcionário' },
-            { id: 'lottery', label: 'Sorteio' },
-            { id: 'settings', label: 'Configurações' },
-            { id: 'files', label: 'Arquivos' },
-            { id: 'history', label: 'Histórico' },
-            ...(currentUserRole === 'admin' ? [
-              { id: 'database', label: 'Banco de Dados' },
-              { id: 'admins', label: 'Administradores' }
-            ] : [])
-          ].map((tab) => (
-            <button 
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
-              className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === tab.id ? 'bg-brand-primary text-white' : 'text-white/40 hover:text-white'}`}
-            >
-              {tab.label}
-            </button>
-          ))}
+        <div className="flex overflow-x-auto no-scrollbar gap-2 mb-8 p-1 bg-white/5 rounded-2xl w-full sm:w-fit">
+          <div className="flex gap-2 min-w-max">
+            {[
+              { id: 'queue', label: 'Fila' },
+              { id: 'employees', label: 'Funcionário' },
+              { id: 'lottery', label: 'Sorteio' },
+              { id: 'settings', label: 'Configurações' },
+              { id: 'files', label: 'Arquivos' },
+              { id: 'history', label: 'Histórico' },
+              ...(currentUserRole === 'admin' ? [
+                { id: 'database', label: 'Banco de Dados' },
+                { id: 'admins', label: 'Administradores' }
+              ] : [])
+            ].map((tab) => (
+              <button 
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as any)}
+                className={`px-4 sm:px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${activeTab === tab.id ? 'bg-brand-primary text-white' : 'text-white/40 hover:text-white'}`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {activeTab === 'queue' && (
@@ -1387,35 +1390,37 @@ const AdminPanel = ({
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       onClick={() => setExpandedHistory(expandedHistory === item.id ? null : item.id)}
-                      className="glass p-6 rounded-[32px] flex items-center justify-between group cursor-pointer hover:bg-white/5 transition-all"
+                      className="glass p-4 md:p-6 rounded-[24px] md:rounded-[32px] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 group cursor-pointer hover:bg-white/5 transition-all"
                     >
-                      <div className="flex items-center gap-6">
-                        <div className="w-12 h-12 bg-brand-primary/10 rounded-2xl flex items-center justify-center text-brand-primary">
-                          <Trophy size={24} />
+                      <div className="flex items-center gap-4 md:gap-6 w-full sm:w-auto">
+                        <div className="w-10 h-10 md:w-12 md:h-12 bg-brand-primary/10 rounded-xl md:rounded-2xl flex items-center justify-center text-brand-primary shrink-0">
+                          <Trophy size={20} className="md:w-6 md:h-6" />
                         </div>
-                        <div>
-                          <h4 className="text-white font-bold uppercase tracking-tight">Vencedor: {item.winnerName}</h4>
-                          <p className="text-white/40 text-[10px] font-black uppercase tracking-widest mt-1">
+                        <div className="min-w-0">
+                          <h4 className="text-white font-bold uppercase tracking-tight text-sm md:text-base truncate">Vencedor: {item.winnerName}</h4>
+                          <p className="text-white/40 text-[8px] md:text-[10px] font-black uppercase tracking-widest mt-1">
                             {new Date(item.timestamp).toLocaleDateString('pt-BR')} às {new Date(item.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                           </p>
                         </div>
                       </div>
-                      <div className="flex items-center gap-4">
-                        <div className="text-brand-secondary text-[10px] font-black uppercase tracking-widest">
-                          {expandedHistory === item.id ? 'Ocultar Lista' : 'Ver Lista Completa'}
+                      <div className="flex items-center justify-between sm:justify-end gap-4 w-full sm:w-auto border-t border-white/5 sm:border-0 pt-3 sm:pt-0">
+                        <div className="text-brand-secondary text-[8px] font-black uppercase tracking-widest">
+                          {expandedHistory === item.id ? 'Ocultar' : 'Ver Lista'}
                         </div>
-                        <button 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (confirm('Excluir este registro do histórico?')) {
-                              onDeleteHistoryItem(item.id);
-                            }
-                          }}
-                          className="p-2 rounded-lg bg-white/5 text-white/20 hover:bg-red-500/10 hover:text-red-500 transition-all"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                        <ChevronDown size={16} className={`text-white/20 transition-transform ${expandedHistory === item.id ? 'rotate-180' : ''}`} />
+                        <div className="flex items-center gap-2">
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (confirm('Excluir este registro do histórico?')) {
+                                onDeleteHistoryItem(item.id);
+                              }
+                            }}
+                            className="p-2 rounded-lg bg-white/5 text-white/20 hover:bg-red-500/10 hover:text-red-500 transition-all"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                          <ChevronDown size={16} className={`text-white/20 transition-transform ${expandedHistory === item.id ? 'rotate-180' : ''}`} />
+                        </div>
                       </div>
                     </motion.div>
                     
@@ -2000,27 +2005,27 @@ const AdminPanel = ({
                   </div>
                 ) : (
                   fileHistory.map((item) => (
-                    <div key={item.id} className="glass p-4 rounded-2xl border border-white/5 flex items-center justify-between group">
-                      <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center text-white/40">
+                    <div key={item.id} className="glass p-4 rounded-2xl border border-white/5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 group">
+                      <div className="flex items-center gap-4 w-full sm:w-auto">
+                        <div className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center text-white/40 shrink-0">
                           <LinkIcon size={18} />
                         </div>
-                        <div>
-                          <p className="text-white font-bold text-sm truncate max-w-[200px]">{item.fileName}</p>
-                          <div className="flex items-center gap-3 mt-1">
-                            <span className="text-[8px] font-black uppercase tracking-widest text-white/30">
+                        <div className="min-w-0">
+                          <p className="text-white font-bold text-sm truncate">{item.fileName}</p>
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">
+                            <span className="text-[8px] font-black uppercase tracking-widest text-white/30 whitespace-nowrap">
                               {new Date(item.timestamp).toLocaleString()}
                             </span>
-                            <span className="text-[8px] font-black uppercase tracking-widest text-white/20">
+                            <span className="text-[8px] font-black uppercase tracking-widest text-white/20 truncate">
                               por {item.uploaderEmail}
                             </span>
                           </div>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
                         <button 
                           onClick={() => onUpdateSettings({ ...settings, downloadUrl: item.downloadUrl, downloadFileName: item.fileName })}
-                          className="p-2 rounded-lg bg-white/5 text-white/40 hover:bg-brand-primary hover:text-white transition-all"
+                          className="flex-1 sm:flex-none p-2 rounded-lg bg-white/5 text-white/40 hover:bg-brand-primary hover:text-white transition-all flex items-center justify-center"
                           title="Ativar no Botão"
                         >
                           <Zap size={14} />
@@ -2029,14 +2034,14 @@ const AdminPanel = ({
                           href={item.downloadUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="p-2 rounded-lg bg-white/5 text-white/40 hover:bg-brand-secondary hover:text-white transition-all"
+                          className="flex-1 sm:flex-none p-2 rounded-lg bg-white/5 text-white/40 hover:bg-brand-secondary hover:text-white transition-all flex items-center justify-center"
                           title="Acessar Link"
                         >
                           <ExternalLink size={14} />
                         </a>
                         <button 
                           onClick={() => onDeleteFileHistoryItem(item.id)}
-                          className="p-2 rounded-lg bg-white/5 text-white/40 hover:bg-red-500 hover:text-white transition-all"
+                          className="flex-1 sm:flex-none p-2 rounded-lg bg-white/5 text-white/40 hover:bg-red-500 hover:text-white transition-all flex items-center justify-center"
                           title="Excluir Registro"
                         >
                           <Trash2 size={14} />
@@ -2068,7 +2073,7 @@ const HeroCard = ({ queueCount, settings }: { queueCount: number, settings: AppS
     <motion.div 
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      className="mx-6 p-8 md:p-12 rounded-[40px] bg-brand-card relative overflow-hidden hero-gradient border border-white/5 shadow-2xl"
+      className="mx-4 md:mx-6 p-6 md:p-12 rounded-[32px] md:rounded-[40px] bg-brand-card relative overflow-hidden hero-gradient border border-white/5 shadow-2xl"
       style={settings.heroBackgroundImage ? {
         backgroundImage: `linear-gradient(to right, rgba(10, 15, 12, 0.95), rgba(10, 15, 12, 0.4)), url(${settings.heroBackgroundImage})`,
         backgroundSize: 'cover',
@@ -2076,46 +2081,48 @@ const HeroCard = ({ queueCount, settings }: { queueCount: number, settings: AppS
       } : {}}
     >
       <div className="relative z-10">
-        <div className="flex items-center gap-2 mb-6">
-          <Leaf size={14} className="text-brand-secondary" />
-          <span className="text-[10px] font-black uppercase tracking-[0.4em] text-brand-secondary">{settings.heroSubtitle}</span>
+        <div className="flex items-center gap-2 mb-4 md:mb-6">
+          <Leaf size={12} className="text-brand-secondary md:w-3.5 md:h-3.5" />
+          <span className="text-[8px] md:text-[10px] font-black uppercase tracking-[0.3em] md:tracking-[0.4em] text-brand-secondary">{settings.heroSubtitle}</span>
         </div>
         
-        <h2 className="text-4xl md:text-6xl font-light leading-none tracking-tight mb-2">
+        <h2 className="text-3xl md:text-6xl font-light leading-none tracking-tight mb-3 md:mb-2">
           {settings.heroTitleLine1} <br />
           <span className="text-brand-primary font-black">{settings.heroTitleLine2}</span>
         </h2>
         
-        <p className="text-white/50 text-sm md:text-base font-medium leading-relaxed max-w-[280px] md:max-w-md mb-10">
+        <p className="text-white/50 text-xs md:text-base font-medium leading-relaxed max-w-full sm:max-w-[280px] md:max-w-md mb-8 md:mb-10">
           {settings.heroDescription}
         </p>
         
-        <div className="flex flex-wrap gap-3">
+        <div className="flex flex-col sm:flex-row flex-wrap gap-3">
           {settings.downloadUrl && (
             <a 
               href={settings.downloadUrl}
               download={settings.downloadFileName || 'app'}
               target="_blank"
               rel="noopener noreferrer"
-              className="px-6 py-3 rounded-full bg-brand-primary text-white flex items-center gap-3 hover:bg-brand-primary/80 transition-all shadow-lg shadow-brand-primary/20"
+              className="px-6 py-3 rounded-full bg-brand-primary text-white flex items-center justify-center sm:justify-start gap-3 hover:bg-brand-primary/80 transition-all shadow-lg shadow-brand-primary/20"
             >
               <Download size={16} />
               <span className="text-xs font-black uppercase tracking-widest">Baixa App</span>
             </a>
           )}
-          <div className="px-5 py-3 rounded-full glass flex items-center gap-3">
-            <Clock size={16} className="text-brand-secondary" />
-            <span className="text-xs font-bold tracking-widest">{time}</span>
-          </div>
-          <div className="px-5 py-3 rounded-full glass flex items-center gap-3">
-            <Users size={16} className="text-brand-secondary" />
-            <span className="text-xs font-bold tracking-widest">{queueCount} Pessoas na Fila</span>
+          <div className="flex gap-3 w-full sm:w-auto">
+            <div className="flex-1 sm:flex-none px-5 py-3 rounded-full glass flex items-center justify-center sm:justify-start gap-3">
+              <Clock size={16} className="text-brand-secondary" />
+              <span className="text-xs font-bold tracking-widest">{time}</span>
+            </div>
+            <div className="flex-1 sm:flex-none px-5 py-3 rounded-full glass flex items-center justify-center sm:justify-start gap-3">
+              <Users size={16} className="text-brand-secondary" />
+              <span className="text-xs font-bold tracking-widest whitespace-nowrap">{queueCount} <span className="hidden xs:inline">Pessoas</span></span>
+            </div>
           </div>
         </div>
       </div>
       
-      <div className="absolute -bottom-12 -right-12 w-64 h-64 bg-brand-primary/10 rounded-full blur-3xl" />
-      <div className="absolute -top-12 -left-12 w-48 h-48 bg-brand-secondary/5 rounded-full blur-3xl" />
+      <div className="absolute -bottom-12 -right-12 w-48 md:w-64 h-48 md:h-64 bg-brand-primary/10 rounded-full blur-3xl" />
+      <div className="absolute -top-12 -left-12 w-32 md:w-48 h-32 md:h-48 bg-brand-secondary/5 rounded-full blur-3xl" />
     </motion.div>
   );
 };
@@ -3012,13 +3019,13 @@ function AppContent() {
               <LotteryCountdownCard settings={settings} />
             </div>
             
-            <section className="px-6 space-y-8">
-              <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-                <div>
+            <section className="px-4 md:px-6 space-y-8">
+              <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6">
+                <div className="text-center lg:text-left">
                   <h3 className="text-2xl md:text-4xl font-light uppercase tracking-tight text-white mb-2">
                     {settings.queueTitleLine1} <span className="font-black">{settings.queueTitleLine2}</span>
                   </h3>
-                  <p className="text-[10px] font-black uppercase tracking-[0.4em] text-brand-secondary">
+                  <p className="text-[8px] md:text-[10px] font-black uppercase tracking-[0.3em] md:tracking-[0.4em] text-brand-secondary">
                     {settings.queueSubtitle}
                     {settings.lastLotteryDate && (
                       <span className="ml-2 opacity-60">
@@ -3028,7 +3035,7 @@ function AppContent() {
                   </p>
                 </div>
                 
-                <div className="relative group flex-1 max-w-md">
+                <div className="relative group w-full lg:max-w-md">
                   <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-white/20 group-focus-within:text-brand-secondary transition-colors" size={18} />
                   <input 
                     type="text"
@@ -3071,15 +3078,15 @@ function AppContent() {
             </section>
           </main>
           
-          <div className="px-6 mt-12 max-w-3xl mx-auto">
-            <div className="p-8 rounded-[32px] glass relative overflow-hidden group">
-              <div className="relative z-10 flex items-center justify-between">
+          <div className="px-4 md:px-6 mt-12 max-w-3xl mx-auto">
+            <div className="p-6 md:p-8 rounded-[24px] md:rounded-[32px] glass relative overflow-hidden group">
+              <div className="relative z-10 flex items-center justify-between gap-4">
                 <div>
-                  <h4 className="text-lg font-bold text-white mb-1 uppercase tracking-tight">Pausa para Café</h4>
-                  <p className="text-white/40 text-xs font-medium max-w-[200px]">Visite nosso lounge após o almoço.</p>
+                  <h4 className="text-base md:text-lg font-bold text-white mb-1 uppercase tracking-tight">Pausa para Café</h4>
+                  <p className="text-white/40 text-[10px] md:text-xs font-medium max-w-[180px] md:max-w-[200px]">Visite nosso lounge após o almoço.</p>
                 </div>
-                <button className="w-12 h-12 rounded-full bg-brand-secondary text-brand-bg flex items-center justify-center hover:scale-110 transition-transform">
-                  <ArrowRight size={20} />
+                <button className="w-10 h-10 md:w-12 md:h-12 rounded-full bg-brand-secondary text-brand-bg flex items-center justify-center hover:scale-110 transition-transform shrink-0">
+                  <ArrowRight size={18} className="md:w-5 md:h-5" />
                 </button>
               </div>
               <div className="absolute top-0 right-0 w-32 h-32 bg-brand-secondary/5 rounded-full -mr-16 -mt-16 blur-2xl group-hover:bg-brand-secondary/10 transition-colors" />
