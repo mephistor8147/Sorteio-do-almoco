@@ -36,6 +36,7 @@ import {
   googleProvider, 
   signInWithPopup, 
   signInWithEmailAndPassword,
+  createUserWithEmailAndPassword as createAuthUser,
   onAuthStateChanged, 
   collection, 
   doc, 
@@ -48,8 +49,11 @@ import {
   updateDoc,
   handleFirestoreError,
   OperationType,
-  User
+  User,
+  firebaseConfigExport
 } from './firebase';
+import { initializeApp, deleteApp } from 'firebase/app';
+import { getAuth, signOut } from 'firebase/auth';
 import { motion, AnimatePresence } from 'motion/react';
 import * as XLSX from 'xlsx';
 
@@ -2127,28 +2131,34 @@ function AppContent() {
 
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       const isHardcodedAdmin = user?.email && ADMIN_EMAILS.includes(user.email.toLowerCase());
-      const isDynamicAdmin = user?.email && admins.some(a => a.email.toLowerCase() === user.email?.toLowerCase() && a.isActive);
-      const isAdminUser = isHardcodedAdmin || isDynamicAdmin;
+      const dynamicAdmin = user?.email ? admins.find(a => a.email.toLowerCase() === user.email?.toLowerCase() && a.isActive) : null;
+      const isAdminUser = isHardcodedAdmin || !!dynamicAdmin;
       
-      if (user && isAdminUser) {
-        setIsAuthenticated(true);
-        if (isHardcodedAdmin) {
-          setCurrentUserRole('admin');
-        } else {
-          const dynamicAdmin = admins.find(a => a.email.toLowerCase() === user.email?.toLowerCase());
-          setCurrentUserRole(dynamicAdmin?.role || 'coordinator');
+      if (user) {
+        if (isAdminUser) {
+          setIsAuthenticated(true);
+          if (isHardcodedAdmin) {
+            setCurrentUserRole('admin');
+          } else {
+            setCurrentUserRole(dynamicAdmin?.role || 'coordinator');
+          }
+          setView(prev => prev === 'login' ? 'admin' : prev);
+          setIsAuthReady(true);
+          clearTimeout(timeout);
+        } else if (!isLoadingAdmins) {
+          // Only sign out if we are SURE they are not an admin (list loaded and they are not in it)
+          setIsAuthenticated(false);
+          setCurrentUserRole(null);
+          if (view === 'admin') setView('public');
+          auth.signOut();
+          setIsAuthReady(true);
+          clearTimeout(timeout);
         }
-        setView(prev => prev === 'login' ? 'admin' : prev);
+        // If isLoadingAdmins is true, we wait for the next run of this effect when admins list updates
       } else {
         setIsAuthenticated(false);
         setCurrentUserRole(null);
         if (view === 'admin') setView('public');
-        // If a non-admin user is logged in, sign them out to prevent permission errors
-        if (user && !isAdminUser && !isLoadingAdmins) {
-          auth.signOut();
-        }
-      }
-      if (!isLoadingAdmins) {
         setIsAuthReady(true);
         clearTimeout(timeout);
       }
@@ -2197,28 +2207,28 @@ function AppContent() {
 
   // Firestore Real-time Sync: Admins
   useEffect(() => {
-    // We only fetch admins if we are authenticated to avoid permission errors
-    // or if we want to support dynamic admin checks after login.
-    if (!isAuthenticated && !auth.currentUser) {
+    // We only fetch admins if we have a user (to avoid permission errors)
+    // or if we are already authenticated.
+    if (!auth.currentUser && !isAuthenticated) {
+      setAdmins([]);
       setIsLoadingAdmins(false);
       return;
     }
 
     setIsLoadingAdmins(true);
     const unsubscribe = onSnapshot(collection(db, 'admins'), (snapshot) => {
-      console.log('Admins snapshot received. Size:', snapshot.size);
       const items = snapshot.docs.map(doc => doc.data() as AdminUser);
       setAdmins(items);
       setIsLoadingAdmins(false);
     }, (error) => {
-      // Only log if it's not a permission error during initial load
+      // If it's a permission error, it might be because the user was just signed out
       if (!error.message.includes('permissions')) {
         console.error('Error fetching admins:', error);
       }
       setIsLoadingAdmins(false);
     });
     return () => unsubscribe();
-  }, [isAuthenticated]);
+  }, [auth.currentUser, isAuthenticated]);
 
   // Firestore Real-time Sync: Settings
   useEffect(() => {
@@ -2275,13 +2285,17 @@ function AppContent() {
   }, [settings, queue, admins]);
 
   const handleLogin = () => {
-    if (auth.currentUser?.email && ADMIN_EMAILS.includes(auth.currentUser.email.toLowerCase())) {
+    const isHardcodedAdmin = auth.currentUser?.email && ADMIN_EMAILS.includes(auth.currentUser.email.toLowerCase());
+    const dynamicAdmin = auth.currentUser?.email ? admins.find(a => a.email.toLowerCase() === auth.currentUser?.email?.toLowerCase() && a.isActive) : null;
+    
+    if (isHardcodedAdmin || dynamicAdmin) {
       setView('admin');
-    } else {
-      // If someone else logs in, sign them out and show error
+    } else if (!isLoadingAdmins) {
+      // If we are sure they are not an admin, sign them out
       auth.signOut();
-      alert("Acesso negado. Apenas o administrador autorizado pode acessar esta área.");
+      addNotification("Acesso negado. Apenas administradores autorizados.", "error");
     }
+    // If isLoadingAdmins is true, onAuthStateChanged will handle the transition once the list loads
   };
 
   const handleLogout = async () => {
@@ -2472,10 +2486,37 @@ function AppContent() {
   const addAdmin = async (name: string, email: string, role: 'admin' | 'coordinator', password?: string, photoUrl?: string) => {
     const adminId = email.toLowerCase();
     
-    // Check if admin already exists
+    // Check if admin already exists in Firestore
     if (admins.some(a => a.id === adminId)) {
       addNotification('Este email já está cadastrado como administrador.', 'error');
       return;
+    }
+
+    // Create Auth User if password is provided
+    if (password) {
+      const secondaryApp = initializeApp(firebaseConfigExport, `Secondary-${Date.now()}`);
+      const secondaryAuth = getAuth(secondaryApp);
+      try {
+        await createAuthUser(secondaryAuth, email, password);
+        await signOut(secondaryAuth);
+      } catch (authErr: any) {
+        // If email already in use, it's fine, maybe they were added before or have an account
+        if (authErr.code !== 'auth/email-already-in-use') {
+          console.error("Auth Creation Error:", authErr);
+          addNotification('Erro ao criar conta de acesso.', 'error', authErr.message);
+          // If it's a critical auth error (like weak password), we should probably stop
+          if (authErr.code === 'auth/weak-password' || authErr.code === 'auth/invalid-email') {
+            await deleteApp(secondaryApp);
+            return;
+          }
+        }
+      } finally {
+        try {
+          await deleteApp(secondaryApp);
+        } catch (e) {
+          console.error("Error deleting secondary app:", e);
+        }
+      }
     }
 
     const newAdmin: AdminUser = {
