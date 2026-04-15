@@ -28,7 +28,9 @@ import {
   Camera,
   Edit2,
   Zap,
-  Timer
+  Timer,
+  Link as LinkIcon,
+  ExternalLink
 } from 'lucide-react';
 import { 
   auth, 
@@ -54,6 +56,7 @@ import {
   storage,
   ref,
   uploadBytes,
+  uploadBytesResumable,
   getDownloadURL
 } from './firebase';
 import { initializeApp, deleteApp } from 'firebase/app';
@@ -512,44 +515,32 @@ const AdminPanel = ({
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   const [activeTab, setActiveTab] = useState<'queue' | 'employees' | 'settings' | 'lottery' | 'database' | 'history' | 'admins' | 'files'>('queue');
-  const [isAppUploading, setIsAppUploading] = useState(false);
+  const [linkUrl, setLinkUrl] = useState('');
+  const [linkName, setLinkName] = useState('');
 
-  const handleAppUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    // Error handling: File size limit (e.g., 50MB)
-    const MAX_SIZE = 50 * 1024 * 1024;
-    if (file.size > MAX_SIZE) {
-      addNotification('O arquivo é muito grande. O limite é 50MB.', 'error');
-      e.target.value = '';
+  const handleLinkSubmit = async () => {
+    if (!linkUrl) {
+      addNotification('Por favor, insira um link válido.', 'error');
       return;
     }
 
-    setIsAppUploading(true);
     try {
-      const storageRef = ref(storage, `apps/${Date.now()}_${file.name}`);
-      await uploadBytes(storageRef, file);
-      const url = await getDownloadURL(storageRef);
-      
       // Update settings
       await onUpdateSettings({
         ...settings,
-        downloadUrl: url,
-        downloadFileName: file.name
+        downloadUrl: linkUrl,
+        downloadFileName: linkName || 'Aplicativo'
       });
       
       // Add to history
-      await onAddFileHistory(file.name, file.size, url);
+      await onAddFileHistory(linkName || 'Link Externo', 0, linkUrl);
       
-      addNotification('Arquivo enviado com sucesso!', 'success');
+      addNotification('Link configurado com sucesso!', 'success');
+      setLinkUrl('');
+      setLinkName('');
     } catch (error: any) {
-      console.error('Error uploading app:', error);
-      const errMsg = error.message || 'Erro desconhecido';
-      addNotification('Erro ao enviar arquivo.', 'error', errMsg);
-    } finally {
-      setIsAppUploading(false);
-      e.target.value = '';
+      console.error('Error setting link:', error);
+      addNotification('Erro ao configurar link.', 'error', error.message);
     }
   };
 
@@ -1899,39 +1890,46 @@ const AdminPanel = ({
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 bg-brand-primary/10 rounded-2xl flex items-center justify-center text-brand-primary">
-                    <Upload size={24} />
+                    <LinkIcon size={24} />
                   </div>
                   <div>
-                    <h3 className="text-xl font-bold uppercase tracking-tight text-white">Gerenciar Arquivos</h3>
-                    <p className="text-white/40 text-xs">Upload de arquivos para download dos usuários.</p>
+                    <h3 className="text-xl font-bold uppercase tracking-tight text-white">Gerenciar Link de Download</h3>
+                    <p className="text-white/40 text-xs">Insira o link direto para o download do aplicativo.</p>
                   </div>
                 </div>
               </div>
 
               <div className="space-y-6">
-                <div className="p-8 border-2 border-dashed border-white/10 rounded-[32px] text-center space-y-4 hover:border-brand-primary/30 transition-all group relative overflow-hidden">
-                  {isAppUploading ? (
-                    <div className="py-8 space-y-4">
-                      <div className="w-12 h-12 border-4 border-brand-primary/20 border-t-brand-primary rounded-full animate-spin mx-auto" />
-                      <p className="text-[10px] font-black uppercase tracking-widest text-white/40">Enviando arquivo...</p>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center mx-auto text-white/20 group-hover:scale-110 transition-transform">
-                        <Plus size={32} />
-                      </div>
-                      <div>
-                        <p className="text-white font-bold text-sm">Clique para selecionar um arquivo</p>
-                        <p className="text-[10px] text-white/40 font-black uppercase tracking-widest mt-1">Formatos suportados: APK, IPA, ZIP, etc. (Máx 50MB)</p>
-                      </div>
-                      <input 
-                        type="file"
-                        onChange={handleAppUpload}
-                        className="absolute inset-0 opacity-0 cursor-pointer"
-                      />
-                    </>
-                  )}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-white/40 ml-4">Nome do Arquivo/App</label>
+                    <input 
+                      type="text"
+                      placeholder="Ex: App Sorteio v1.0"
+                      value={linkName}
+                      onChange={(e) => setLinkName(e.target.value)}
+                      className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-white/40 ml-4">URL do Download</label>
+                    <input 
+                      type="text"
+                      placeholder="https://exemplo.com/app.apk"
+                      value={linkUrl}
+                      onChange={(e) => setLinkUrl(e.target.value)}
+                      className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all"
+                    />
+                  </div>
                 </div>
+
+                <button 
+                  onClick={handleLinkSubmit}
+                  className="w-full bg-brand-primary hover:bg-brand-primary/80 text-white font-black uppercase tracking-[0.2em] py-4 rounded-2xl shadow-lg shadow-brand-primary/20 transition-all active:scale-95 flex items-center justify-center gap-3"
+                >
+                  <Plus size={18} />
+                  Configurar Link de Download
+                </button>
 
                 {settings.downloadUrl && (
                   <div className="glass p-6 rounded-3xl border border-white/10 flex items-center justify-between">
@@ -1940,9 +1938,9 @@ const AdminPanel = ({
                         <Check size={20} />
                       </div>
                       <div>
-                        <p className="text-white font-bold text-sm">Arquivo Atual (Ativo no Botão)</p>
+                        <p className="text-white font-bold text-sm">Link Ativo no Botão</p>
                         <p className="text-[10px] text-white/40 font-black uppercase tracking-widest truncate max-w-[200px]">
-                          {settings.downloadFileName || 'Arquivo enviado'}
+                          {settings.downloadFileName || 'Link configurado'}
                         </p>
                       </div>
                     </div>
@@ -1952,14 +1950,14 @@ const AdminPanel = ({
                         target="_blank"
                         rel="noopener noreferrer"
                         className="p-3 rounded-xl bg-white/5 text-white/40 hover:bg-brand-primary hover:text-white transition-all"
-                        title="Baixar"
+                        title="Testar Link"
                       >
-                        <Download size={16} />
+                        <ExternalLink size={16} />
                       </a>
                       <button 
                         onClick={() => onUpdateSettings({ ...settings, downloadUrl: '', downloadFileName: '' })}
                         className="p-3 rounded-xl bg-white/5 text-white/40 hover:bg-red-500 hover:text-white transition-all"
-                        title="Remover do Botão"
+                        title="Remover Link"
                       >
                         <Trash2 size={16} />
                       </button>
@@ -1976,8 +1974,8 @@ const AdminPanel = ({
                     <Database size={24} />
                   </div>
                   <div>
-                    <h3 className="text-xl font-bold uppercase tracking-tight text-white">Histórico de Uploads</h3>
-                    <p className="text-white/40 text-xs">Registros de todos os arquivos enviados.</p>
+                    <h3 className="text-xl font-bold uppercase tracking-tight text-white">Histórico de Links</h3>
+                    <p className="text-white/40 text-xs">Registros de todos os links configurados.</p>
                   </div>
                 </div>
                 {fileHistory.length > 0 && (
@@ -1998,23 +1996,20 @@ const AdminPanel = ({
                   </div>
                 ) : fileHistory.length === 0 ? (
                   <div className="py-12 text-center border-2 border-dashed border-white/5 rounded-3xl">
-                    <p className="text-[10px] font-black uppercase tracking-widest text-white/20">Nenhum upload registrado.</p>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-white/20">Nenhum link registrado.</p>
                   </div>
                 ) : (
                   fileHistory.map((item) => (
                     <div key={item.id} className="glass p-4 rounded-2xl border border-white/5 flex items-center justify-between group">
                       <div className="flex items-center gap-4">
                         <div className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center text-white/40">
-                          <Upload size={18} />
+                          <LinkIcon size={18} />
                         </div>
                         <div>
                           <p className="text-white font-bold text-sm truncate max-w-[200px]">{item.fileName}</p>
                           <div className="flex items-center gap-3 mt-1">
                             <span className="text-[8px] font-black uppercase tracking-widest text-white/30">
                               {new Date(item.timestamp).toLocaleString()}
-                            </span>
-                            <span className="text-[8px] font-black uppercase tracking-widest text-brand-secondary">
-                              {(item.fileSize / (1024 * 1024)).toFixed(2)} MB
                             </span>
                             <span className="text-[8px] font-black uppercase tracking-widest text-white/20">
                               por {item.uploaderEmail}
@@ -2035,9 +2030,9 @@ const AdminPanel = ({
                           target="_blank"
                           rel="noopener noreferrer"
                           className="p-2 rounded-lg bg-white/5 text-white/40 hover:bg-brand-secondary hover:text-white transition-all"
-                          title="Baixar"
+                          title="Acessar Link"
                         >
-                          <Download size={14} />
+                          <ExternalLink size={14} />
                         </a>
                         <button 
                           onClick={() => onDeleteFileHistoryItem(item.id)}

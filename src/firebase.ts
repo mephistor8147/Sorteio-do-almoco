@@ -27,6 +27,7 @@ import {
   getStorage, 
   ref, 
   uploadBytes, 
+  uploadBytesResumable,
   getDownloadURL, 
   deleteObject 
 } from 'firebase/storage';
@@ -37,7 +38,7 @@ export const firebaseConfigExport = firebaseConfig;
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
-export const storage = getStorage(app);
+export const storage = getStorage(app, firebaseConfig.storageBucket);
 export const googleProvider = new GoogleAuthProvider();
 
 // Error Handling
@@ -122,6 +123,7 @@ export {
   updateDoc,
   ref,
   uploadBytes,
+  uploadBytesResumable,
   getDownloadURL,
   deleteObject,
   type User
