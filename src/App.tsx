@@ -425,7 +425,8 @@ const AdminPanel = ({
   isLoadingQueue,
   isLoadingHistory,
   isLoadingAdmins,
-  isLoadingSettings
+  isLoadingSettings,
+  addNotification
 }: { 
   onLogout: () => void, 
   queue: Employee[], 
@@ -449,7 +450,8 @@ const AdminPanel = ({
   isLoadingQueue: boolean,
   isLoadingHistory: boolean,
   isLoadingAdmins: boolean,
-  isLoadingSettings: boolean
+  isLoadingSettings: boolean,
+  addNotification: (message: string, type?: 'success' | 'error' | 'info', description?: string) => void
 }) => {
   const [newName, setNewName] = useState('');
   const [newPhotoUrl, setNewPhotoUrl] = useState('');
@@ -1399,8 +1401,9 @@ const AdminPanel = ({
                       type="email"
                       value={adminEmail}
                       onChange={(e) => setAdminEmail(e.target.value)}
+                      readOnly={!!editingAdminId}
                       placeholder="email@exemplo.com"
-                      className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all"
+                      className={`w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all ${editingAdminId ? 'opacity-50 cursor-not-allowed' : ''}`}
                     />
                   </div>
                   <div className="space-y-2">
@@ -1464,42 +1467,60 @@ const AdminPanel = ({
                 </div>
                 <div className="flex gap-3">
                   <button 
+                    disabled={isAdminUploading}
                     onClick={() => {
-                      if (!adminName || !adminEmail) return;
+                      const trimmedName = adminName.trim();
+                      const trimmedEmail = adminEmail.trim().toLowerCase();
+                      
+                      if (!trimmedName || !trimmedEmail) {
+                        addNotification('Nome e email são obrigatórios.', 'error');
+                        return;
+                      }
+
+                      // Basic email validation
+                      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                      if (!emailRegex.test(trimmedEmail)) {
+                        addNotification('Email inválido.', 'error');
+                        return;
+                      }
+
                       if (editingAdminId) {
                         onUpdateAdmin(editingAdminId, { 
-                          name: adminName, 
-                          email: adminEmail, 
+                          name: trimmedName, 
+                          email: trimmedEmail, 
                           role: adminRole,
                           password: adminPassword || undefined,
                           photoUrl: adminPhotoUrl || undefined
                         });
                         setEditingAdminId(null);
                       } else {
-                        onAddAdmin(adminName, adminEmail, adminRole, adminPassword, adminPhotoUrl);
+                        onAddAdmin(trimmedName, trimmedEmail, adminRole, adminPassword, adminPhotoUrl);
                       }
+                      
                       setAdminName('');
                       setAdminEmail('');
                       setAdminPassword('');
                       setAdminPhotoUrl('');
+                      setAdminRole('coordinator');
                     }}
-                    className="flex-1 bg-brand-primary text-white font-black uppercase tracking-widest py-4 rounded-2xl shadow-lg transition-all active:scale-95"
+                    className={`flex-1 bg-brand-primary text-white font-black uppercase tracking-widest py-4 rounded-2xl shadow-lg transition-all active:scale-95 ${isAdminUploading ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
-                    {editingAdminId ? 'Salvar Alterações' : 'Criar Administrador'}
+                    {isAdminUploading ? 'Enviando...' : (editingAdminId ? 'Salvar Alterações' : 'Criar Administrador')}
                   </button>
                   {editingAdminId && (
-                    <button 
-                      onClick={() => {
-                        setEditingAdminId(null);
-                        setAdminName('');
-                        setAdminEmail('');
-                        setAdminPassword('');
-                        setAdminPhotoUrl('');
-                      }}
-                      className="px-8 glass text-white font-black uppercase tracking-widest py-4 rounded-2xl transition-all active:scale-95"
-                    >
-                      Cancelar
-                    </button>
+                        <button 
+                          onClick={() => {
+                            setEditingAdminId(null);
+                            setAdminName('');
+                            setAdminEmail('');
+                            setAdminPassword('');
+                            setAdminPhotoUrl('');
+                            setAdminRole('coordinator');
+                          }}
+                          className="px-8 glass text-white font-black uppercase tracking-widest py-4 rounded-2xl transition-all active:scale-95"
+                        >
+                          Cancelar
+                        </button>
                   )}
                 </div>
               </div>
@@ -2441,6 +2462,13 @@ function AppContent() {
 
   const addAdmin = async (name: string, email: string, role: 'admin' | 'coordinator', password?: string, photoUrl?: string) => {
     const adminId = email.toLowerCase();
+    
+    // Check if admin already exists
+    if (admins.some(a => a.id === adminId)) {
+      addNotification('Este email já está cadastrado como administrador.', 'error');
+      return;
+    }
+
     const newAdmin: AdminUser = {
       id: adminId,
       name,
@@ -2573,6 +2601,7 @@ function AppContent() {
           isLoadingHistory={isLoadingHistory}
           isLoadingAdmins={isLoadingAdmins}
           isLoadingSettings={isLoadingSettings}
+          addNotification={addNotification}
         />
       )}
 
