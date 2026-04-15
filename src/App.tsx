@@ -903,7 +903,29 @@ const AdminPanel = ({
               </div>
 
               <div className="space-y-4">
-                <h3 className="text-[10px] font-black uppercase tracking-[0.4em] text-white/30 ml-4">Todos os Funcionários ({queue.length})</h3>
+                <div className="flex items-center justify-between px-4">
+                  <h3 className="text-[10px] font-black uppercase tracking-[0.4em] text-white/30">Todos os Funcionários ({queue.length})</h3>
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={() => {
+                        const newQueue = queue.map(emp => ({ ...emp, isActive: true }));
+                        onSetQueue(newQueue);
+                      }}
+                      className="px-3 py-1.5 bg-green-500/10 text-green-400 hover:bg-green-500 hover:text-white rounded-lg text-[8px] font-black uppercase tracking-widest transition-all"
+                    >
+                      Ativar Todos
+                    </button>
+                    <button 
+                      onClick={() => {
+                        const newQueue = queue.map(emp => ({ ...emp, isActive: false }));
+                        onSetQueue(newQueue);
+                      }}
+                      className="px-3 py-1.5 bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white rounded-lg text-[8px] font-black uppercase tracking-widest transition-all"
+                    >
+                      Desativar Todos
+                    </button>
+                  </div>
+                </div>
                 <div className="space-y-3">
                   {isLoadingQueue ? (
                     <SkeletonQueue />
@@ -1017,9 +1039,16 @@ const AdminPanel = ({
 
                   {/* Histórico de Sorteios na aba Sorteio */}
                   <div className="glass p-8 rounded-[40px] space-y-6">
-                    <h3 className="text-xl font-bold uppercase tracking-tight flex items-center gap-3">
-                      <Trophy className="text-brand-secondary" size={20} /> Histórico de Sorteios
-                    </h3>
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-xl font-bold uppercase tracking-tight flex items-center gap-3">
+                        <Trophy className="text-brand-secondary" size={20} /> Histórico de Sorteios
+                      </h3>
+                      {history.length > 0 && (
+                        <span className="text-[10px] font-black uppercase tracking-widest text-white/40 bg-white/5 px-3 py-1.5 rounded-xl border border-white/10">
+                          Último: {new Date(history[0].timestamp).toLocaleDateString('pt-BR')}
+                        </span>
+                      )}
+                    </div>
                     <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
                       {history.length === 0 ? (
                         <div className="text-center py-12 text-white/20">
@@ -1242,9 +1271,16 @@ const AdminPanel = ({
         {activeTab === 'history' && (
           <div className="space-y-8">
             <div className="flex items-center justify-between">
-              <h3 className="text-xl font-bold uppercase tracking-tight flex items-center gap-3">
-                <Trophy className="text-brand-secondary" size={20} /> Histórico de Sorteios
-              </h3>
+              <div className="flex items-center gap-4">
+                <h3 className="text-xl font-bold uppercase tracking-tight flex items-center gap-3">
+                  <Trophy className="text-brand-secondary" size={20} /> Histórico de Sorteios
+                </h3>
+                {history.length > 0 && (
+                  <span className="text-[10px] font-black uppercase tracking-widest text-white/40 bg-white/5 px-3 py-1.5 rounded-xl border border-white/10">
+                    Último: {new Date(history[0].timestamp).toLocaleDateString('pt-BR')}
+                  </span>
+                )}
+              </div>
               {history.length > 0 && (
                 <button 
                   onClick={() => {
