@@ -2010,6 +2010,57 @@ const QueueItem = React.forwardRef<HTMLDivElement, {
   )
 );
 
+const SystemLoader = () => (
+  <motion.div 
+    initial={{ opacity: 1 }}
+    exit={{ opacity: 0 }}
+    className="fixed inset-0 z-[300] bg-brand-bg flex flex-col items-center justify-center gap-8"
+  >
+    <div className="relative">
+      <motion.div 
+        animate={{ 
+          scale: [1, 1.2, 1],
+          rotate: [0, 180, 360]
+        }}
+        transition={{ 
+          duration: 2,
+          repeat: Infinity,
+          ease: "easeInOut"
+        }}
+        className="w-20 h-20 border-4 border-brand-primary/20 border-t-brand-primary rounded-3xl"
+      />
+      <motion.div 
+        animate={{ 
+          scale: [1, 1.5, 1],
+          opacity: [0.3, 0.6, 0.3]
+        }}
+        transition={{ 
+          duration: 2,
+          repeat: Infinity,
+          ease: "easeInOut"
+        }}
+        className="absolute inset-0 bg-brand-primary/20 blur-2xl rounded-full"
+      />
+    </div>
+    <div className="flex flex-col items-center gap-2">
+      <motion.h2 
+        animate={{ opacity: [0.4, 1, 0.4] }}
+        transition={{ duration: 2, repeat: Infinity }}
+        className="text-white font-black uppercase tracking-[0.4em] text-sm"
+      >
+        Iniciando Sistema
+      </motion.h2>
+      <div className="w-48 h-1 bg-white/5 rounded-full overflow-hidden">
+        <motion.div 
+          animate={{ x: ["-100%", "100%"] }}
+          transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
+          className="w-full h-full bg-gradient-to-r from-transparent via-brand-primary to-transparent"
+        />
+      </div>
+    </div>
+  </motion.div>
+);
+
 function AppContent() {
   const [view, setView] = useState<'public' | 'login' | 'admin'>('public');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -2038,6 +2089,12 @@ function AppContent() {
 
   // Auth Listener
   useEffect(() => {
+    // Safety timeout to prevent infinite loading if Firebase takes too long
+    const timeout = setTimeout(() => {
+      setIsAuthReady(true);
+      setIsLoadingSettings(false);
+    }, 5000);
+
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       const isHardcodedAdmin = user?.email && ADMIN_EMAILS.includes(user.email.toLowerCase());
       const isDynamicAdmin = user?.email && admins.some(a => a.email.toLowerCase() === user.email?.toLowerCase() && a.isActive);
@@ -2063,9 +2120,13 @@ function AppContent() {
       }
       if (!isLoadingAdmins) {
         setIsAuthReady(true);
+        clearTimeout(timeout);
       }
     });
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+      clearTimeout(timeout);
+    };
   }, [view, admins, isLoadingAdmins]);
 
   // Firestore Real-time Sync: Queue
@@ -2449,6 +2510,10 @@ function AppContent() {
   const filteredQueue = queue.filter(emp => 
     emp.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  if (!isAuthReady || isLoadingSettings) {
+    return <SystemLoader />;
+  }
 
   return (
     <div className="min-h-screen pb-20">
