@@ -709,52 +709,25 @@ const AdminPanel = ({
         </div>
 
         <div className="flex flex-wrap gap-2 mb-8 p-1 bg-white/5 rounded-2xl w-fit">
-          <button 
-            onClick={() => setActiveTab('queue')}
-            className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'queue' ? 'bg-brand-primary text-white' : 'text-white/40 hover:text-white'}`}
-          >
-            Fila
-          </button>
-          <button 
-            onClick={() => setActiveTab('employees')}
-            className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'employees' ? 'bg-brand-primary text-white' : 'text-white/40 hover:text-white'}`}
-          >
-            Funcionários
-          </button>
-          <button 
-            onClick={() => setActiveTab('lottery')}
-            className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'lottery' ? 'bg-brand-primary text-white' : 'text-white/40 hover:text-white'}`}
-          >
-            Sorteio
-          </button>
-          <button 
-            onClick={() => setActiveTab('settings')}
-            className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'settings' ? 'bg-brand-primary text-white' : 'text-white/40 hover:text-white'}`}
-          >
-            Configurações
-          </button>
-          <button 
-            onClick={() => setActiveTab('history')}
-            className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'history' ? 'bg-brand-primary text-white' : 'text-white/40 hover:text-white'}`}
-          >
-            Histórico
-          </button>
-          {currentUserRole === 'admin' && (
-            <>
-              <button 
-                onClick={() => setActiveTab('database')}
-                className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'database' ? 'bg-brand-primary text-white' : 'text-white/40 hover:text-white'}`}
-              >
-                Banco de Dados
-              </button>
-              <button 
-                onClick={() => setActiveTab('admins')}
-                className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'admins' ? 'bg-brand-primary text-white' : 'text-white/40 hover:text-white'}`}
-              >
-                Administradores
-              </button>
-            </>
-          )}
+          {[
+            { id: 'queue', label: 'Fila' },
+            { id: 'employees', label: 'Funcionário' },
+            { id: 'lottery', label: 'Sorteio' },
+            { id: 'settings', label: 'Configurações' },
+            { id: 'history', label: 'Histórico' },
+            ...(currentUserRole === 'admin' ? [
+              { id: 'database', label: 'Banco de Dados' },
+              { id: 'admins', label: 'Administradores' }
+            ] : [])
+          ].map((tab) => (
+            <button 
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as any)}
+              className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === tab.id ? 'bg-brand-primary text-white' : 'text-white/40 hover:text-white'}`}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
 
         {activeTab === 'queue' && (
