@@ -2151,6 +2151,7 @@ function AppContent() {
           setCurrentUserRole(null);
           if (view === 'admin') setView('public');
           auth.signOut();
+          addNotification("Acesso negado. Apenas administradores autorizados.", "error");
           setIsAuthReady(true);
           clearTimeout(timeout);
         }
@@ -2211,7 +2212,10 @@ function AppContent() {
     // or if we are already authenticated.
     if (!auth.currentUser && !isAuthenticated) {
       setAdmins([]);
-      setIsLoadingAdmins(false);
+      // Only set to false if we are sure there is no login in progress
+      if (view !== 'login') {
+        setIsLoadingAdmins(false);
+      }
       return;
     }
 
@@ -2228,7 +2232,7 @@ function AppContent() {
       setIsLoadingAdmins(false);
     });
     return () => unsubscribe();
-  }, [auth.currentUser, isAuthenticated]);
+  }, [auth.currentUser, isAuthenticated, view]);
 
   // Firestore Real-time Sync: Settings
   useEffect(() => {
@@ -2285,17 +2289,19 @@ function AppContent() {
   }, [settings, queue, admins]);
 
   const handleLogin = () => {
+    // When handleLogin is called, we are likely in the middle of a login transition.
+    // We set isLoadingAdmins to true to prevent onAuthStateChanged from signing out 
+    // before the admins list has a chance to load for the new user.
+    setIsLoadingAdmins(true);
+    
     const isHardcodedAdmin = auth.currentUser?.email && ADMIN_EMAILS.includes(auth.currentUser.email.toLowerCase());
     const dynamicAdmin = auth.currentUser?.email ? admins.find(a => a.email.toLowerCase() === auth.currentUser?.email?.toLowerCase() && a.isActive) : null;
     
     if (isHardcodedAdmin || dynamicAdmin) {
       setView('admin');
-    } else if (!isLoadingAdmins) {
-      // If we are sure they are not an admin, sign them out
-      auth.signOut();
-      addNotification("Acesso negado. Apenas administradores autorizados.", "error");
     }
-    // If isLoadingAdmins is true, onAuthStateChanged will handle the transition once the list loads
+    // If not an admin yet, onAuthStateChanged will handle it once isLoadingAdmins becomes false
+    // after the snapshot returns.
   };
 
   const handleLogout = async () => {
