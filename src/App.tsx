@@ -466,7 +466,7 @@ const AdminPanel = ({
   const [isAdminUploading, setIsAdminUploading] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
-  const [activeTab, setActiveTab] = useState<'queue' | 'settings' | 'lottery' | 'database' | 'history' | 'admins'>('queue');
+  const [activeTab, setActiveTab] = useState<'queue' | 'employees' | 'settings' | 'lottery' | 'database' | 'history' | 'admins'>('queue');
 
   const [isShufflingLocal, setIsShufflingLocal] = useState(false);
   const [shuffleDisplay, setShuffleDisplay] = useState<Employee | null>(null);
@@ -714,6 +714,12 @@ const AdminPanel = ({
             Fila
           </button>
           <button 
+            onClick={() => setActiveTab('employees')}
+            className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'employees' ? 'bg-brand-primary text-white' : 'text-white/40 hover:text-white'}`}
+          >
+            Funcionários
+          </button>
+          <button 
             onClick={() => setActiveTab('lottery')}
             className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'lottery' ? 'bg-brand-primary text-white' : 'text-white/40 hover:text-white'}`}
           >
@@ -750,6 +756,91 @@ const AdminPanel = ({
         </div>
 
         {activeTab === 'queue' && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div className="md:col-span-2 space-y-8">
+              <div className="space-y-4">
+                <h3 className="text-[10px] font-black uppercase tracking-[0.4em] text-white/30 ml-4">Ordem Atual ({queue.filter(e => e.isActive).length})</h3>
+                <div className="space-y-3">
+                  {isLoadingQueue ? (
+                    <SkeletonQueue />
+                  ) : (
+                    queue.filter(e => e.isActive).map((emp) => (
+                      <div key={emp.id} className="glass p-4 md:p-5 rounded-[24px] md:rounded-[32px] flex items-center justify-between group">
+                        <div className="flex items-center gap-4">
+                          <div className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center text-white/40 font-bold text-sm overflow-hidden">
+                            {emp.photoUrl ? (
+                              <img src={emp.photoUrl} alt={emp.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                            ) : (
+                              emp.position
+                            )}
+                          </div>
+                          <div>
+                            <span className="text-white font-bold uppercase tracking-tight text-sm md:text-base block">{emp.name}</span>
+                            <span className="text-[8px] font-black uppercase tracking-widest text-brand-secondary">
+                              Posição {emp.position}º
+                            </span>
+                          </div>
+                        </div>
+                        <button 
+                          onClick={() => onToggleActive(emp.id, emp.isActive)}
+                          className="px-4 py-2 bg-brand-primary/10 text-brand-primary hover:bg-brand-primary hover:text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 flex items-center gap-2"
+                        >
+                          <Check size={14} />
+                          Chamar
+                        </button>
+                      </div>
+                    ))
+                  )}
+                  {!isLoadingQueue && queue.filter(e => e.isActive).length === 0 && (
+                    <div className="glass p-12 rounded-[40px] text-center text-white/40 uppercase tracking-widest text-[10px] font-black">
+                      A fila está vazia.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-6">
+              <div className="glass p-6 md:p-8 rounded-[32px] md:rounded-[40px] space-y-4">
+                <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-brand-secondary">Status do Sistema</h3>
+                <div className="flex items-center justify-between">
+                  <span className="text-white/60 text-[10px] font-bold uppercase tracking-widest">Banco de Dados</span>
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                    <span className="text-green-500 text-[8px] font-black uppercase tracking-widest">Online</span>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-white/60 text-[10px] font-bold uppercase tracking-widest">Funcionários Ativos</span>
+                  <span className="text-white text-[10px] font-black">{queue.filter(e => e.isActive).length}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-white/60 text-[10px] font-bold uppercase tracking-widest">Total Cadastrado</span>
+                  <span className="text-white text-[10px] font-black">{queue.length}</span>
+                </div>
+              </div>
+
+              <div className="glass p-6 md:p-8 rounded-[32px] md:rounded-[40px] space-y-4">
+                <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-brand-secondary">Ações Rápidas</h3>
+                <div className="grid grid-cols-1 gap-3">
+                  <button 
+                    onClick={() => {
+                      if(confirm('Limpar toda a fila?')) {
+                        queue.forEach(e => onRemove(e.id));
+                      }
+                    }}
+                    className="w-full flex items-center gap-3 p-4 rounded-2xl bg-white/5 hover:bg-white/10 transition-all text-left group"
+                  >
+                    <Database size={18} className="text-white/40 group-hover:text-brand-secondary" />
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-white/70">Limpar Fila</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'employees' && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             <div className="md:col-span-2 space-y-8">
               <div className="glass p-6 md:p-8 rounded-[32px] md:rounded-[40px] space-y-6">
@@ -837,7 +928,7 @@ const AdminPanel = ({
               </div>
 
               <div className="space-y-4">
-                <h3 className="text-[10px] font-black uppercase tracking-[0.4em] text-white/30 ml-4">Fila Atual ({queue.length})</h3>
+                <h3 className="text-[10px] font-black uppercase tracking-[0.4em] text-white/30 ml-4">Todos os Funcionários ({queue.length})</h3>
                 <div className="space-y-3">
                   {isLoadingQueue ? (
                     <SkeletonQueue />
@@ -889,37 +980,6 @@ const AdminPanel = ({
                       </div>
                     ))
                   )}
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-6">
-              <div className="glass p-6 md:p-8 rounded-[32px] md:rounded-[40px] space-y-4">
-                <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-brand-secondary">Status do Sistema</h3>
-                <div className="flex items-center justify-between">
-                  <span className="text-white/60 text-[10px] font-bold uppercase tracking-widest">Banco de Dados</span>
-                  <span className="px-3 py-1 bg-green-500/20 text-green-400 text-[8px] font-black uppercase rounded-full">Local Ativo</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-white/60 text-[10px] font-bold uppercase tracking-widest">Versão</span>
-                  <span className="text-white/40 text-[10px] font-bold">v1.1.1</span>
-                </div>
-              </div>
-
-              <div className="glass p-6 md:p-8 rounded-[32px] md:rounded-[40px] space-y-4">
-                <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-brand-secondary">Ações Rápidas</h3>
-                <div className="grid grid-cols-1 gap-3">
-                  <button 
-                    onClick={() => {
-                      if(confirm('Limpar toda a fila?')) {
-                        queue.forEach(e => onRemove(e.id));
-                      }
-                    }}
-                    className="w-full flex items-center gap-3 p-4 rounded-2xl bg-white/5 hover:bg-white/10 transition-all text-left group"
-                  >
-                    <Database size={18} className="text-white/40 group-hover:text-brand-secondary" />
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-white/70">Limpar Fila</span>
-                  </button>
                 </div>
               </div>
             </div>
@@ -1872,8 +1932,13 @@ const LotteryCountdownCard = ({ settings }: { settings: AppSettings }) => {
   );
 };
 
-const QueueItem = React.forwardRef<HTMLDivElement, { employee: Employee, isFirst: boolean }>(
-  ({ employee, isFirst }, ref) => (
+const QueueItem = React.forwardRef<HTMLDivElement, { 
+  employee: Employee, 
+  isFirst: boolean,
+  isAdmin?: boolean,
+  onCall?: (id: string) => void
+}>(
+  ({ employee, isFirst, isAdmin, onCall }, ref) => (
     <motion.div 
       ref={ref}
       layout
@@ -1918,10 +1983,28 @@ const QueueItem = React.forwardRef<HTMLDivElement, { employee: Employee, isFirst
         </div>
       </div>
       
-      <div className={`w-10 h-10 md:w-12 md:h-12 rounded-2xl flex items-center justify-center text-base md:text-lg font-black transition-all ${
-        isFirst ? 'bg-white/10 text-white' : 'bg-white/5 text-white/20'
-      }`}>
-        {employee.position}º
+      <div className="flex items-center gap-3">
+        {isAdmin && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onCall?.(employee.id);
+            }}
+            className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 flex items-center gap-2 ${
+              isFirst 
+                ? 'bg-white text-brand-primary hover:bg-brand-secondary hover:text-brand-bg' 
+                : 'bg-brand-primary/10 text-brand-primary hover:bg-brand-primary hover:text-white'
+            }`}
+          >
+            <Check size={14} />
+            Chamar
+          </button>
+        )}
+        <div className={`w-10 h-10 md:w-12 md:h-12 rounded-2xl flex items-center justify-center text-base md:text-lg font-black transition-all ${
+          isFirst ? 'bg-white/10 text-white' : 'bg-white/5 text-white/20'
+        }`}>
+          {employee.position}º
+        </div>
       </div>
     </motion.div>
   )
@@ -2474,6 +2557,8 @@ function AppContent() {
                           key={employee.id} 
                           employee={employee} 
                           isFirst={index === 0 && searchQuery === ''} 
+                          isAdmin={isAuthenticated}
+                          onCall={(id) => toggleEmployeeActive(id, true)}
                         />
                       ))}
                       {filteredQueue.length === 0 && (
