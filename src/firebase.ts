@@ -23,6 +23,13 @@ import {
   updateDoc,
   getDocFromServer
 } from 'firebase/firestore';
+import { 
+  getStorage, 
+  ref, 
+  uploadBytes, 
+  getDownloadURL, 
+  deleteObject 
+} from 'firebase/storage';
 import firebaseConfig from '../firebase-applet-config.json';
 
 // Initialize Firebase
@@ -30,6 +37,7 @@ export const firebaseConfigExport = firebaseConfig;
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
+export const storage = getStorage(app);
 export const googleProvider = new GoogleAuthProvider();
 
 // Error Handling
@@ -112,5 +120,9 @@ export {
   writeBatch,
   deleteDoc,
   updateDoc,
+  ref,
+  uploadBytes,
+  getDownloadURL,
+  deleteObject,
   type User
 };

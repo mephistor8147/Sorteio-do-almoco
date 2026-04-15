@@ -50,7 +50,11 @@ import {
   handleFirestoreError,
   OperationType,
   User,
-  firebaseConfigExport
+  firebaseConfigExport,
+  storage,
+  ref,
+  uploadBytes,
+  getDownloadURL
 } from './firebase';
 import { initializeApp, deleteApp } from 'firebase/app';
 import { getAuth, signOut } from 'firebase/auth';
@@ -81,6 +85,8 @@ interface AppSettings {
   queueTitleLine1: string;
   queueTitleLine2: string;
   queueSubtitle: string;
+  downloadUrl?: string;
+  downloadFileName?: string;
 }
 
 interface LotteryHistory {
@@ -89,6 +95,15 @@ interface LotteryHistory {
   winnerName: string;
   winnerId: string;
   fullList: { id: string; name: string; photoUrl?: string }[];
+}
+
+interface FileHistory {
+  id: string;
+  timestamp: string;
+  fileName: string;
+  fileSize: number;
+  uploaderEmail: string;
+  downloadUrl: string;
 }
 
 interface AdminUser {
@@ -117,7 +132,9 @@ const DEFAULT_SETTINGS: AppSettings = {
   headerSubtitle: 'Gourmet Experience',
   queueTitleLine1: 'FILA DE',
   queueTitleLine2: 'SERVIÇO',
-  queueSubtitle: 'Ordem de Prioridade'
+  queueSubtitle: 'Ordem de Prioridade',
+  downloadUrl: '',
+  downloadFileName: ''
 };
 
 const ADMIN_EMAILS = ['l2xbrasil@gmail.com', 'sorteioadm@sorteio.com'];
@@ -248,6 +265,18 @@ const Header = ({ onAdminClick, isAuthenticated, settings }: { onAdminClick: () 
     </div>
     
     <div className="flex items-center gap-3">
+      {settings.downloadUrl && (
+        <a 
+          href={settings.downloadUrl}
+          download={settings.downloadFileName || 'app'}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-brand-primary/10 text-brand-primary hover:bg-brand-primary hover:text-white transition-all text-[10px] font-black uppercase tracking-widest"
+        >
+          <Download size={14} />
+          Baixa App
+        </a>
+      )}
       <button 
         onClick={onAdminClick}
         className={`w-10 h-10 rounded-2xl glass flex items-center justify-center transition-all ${isAuthenticated ? 'text-brand-secondary' : 'text-white/70 hover:text-white'}`}
@@ -428,6 +457,11 @@ const AdminPanel = ({
   currentUserRole,
   isLoadingQueue,
   isLoadingHistory,
+  fileHistory,
+  onDeleteFileHistoryItem,
+  onClearFileHistory,
+  onAddFileHistory,
+  isLoadingFileHistory,
   isLoadingAdmins,
   isLoadingSettings,
   addNotification
@@ -453,6 +487,11 @@ const AdminPanel = ({
   currentUserRole: 'admin' | 'coordinator' | null,
   isLoadingQueue: boolean,
   isLoadingHistory: boolean,
+  fileHistory: FileHistory[],
+  onDeleteFileHistoryItem: (id: string) => void,
+  onClearFileHistory: () => void,
+  onAddFileHistory: (fileName: string, fileSize: number, downloadUrl: string) => void,
+  isLoadingFileHistory: boolean,
   isLoadingAdmins: boolean,
   isLoadingSettings: boolean,
   addNotification: (message: string, type?: 'success' | 'error' | 'info', description?: string) => void
@@ -472,7 +511,47 @@ const AdminPanel = ({
   const [isAdminUploading, setIsAdminUploading] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
-  const [activeTab, setActiveTab] = useState<'queue' | 'employees' | 'settings' | 'lottery' | 'database' | 'history' | 'admins'>('queue');
+  const [activeTab, setActiveTab] = useState<'queue' | 'employees' | 'settings' | 'lottery' | 'database' | 'history' | 'admins' | 'files'>('queue');
+  const [isAppUploading, setIsAppUploading] = useState(false);
+
+  const handleAppUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Error handling: File size limit (e.g., 50MB)
+    const MAX_SIZE = 50 * 1024 * 1024;
+    if (file.size > MAX_SIZE) {
+      addNotification('O arquivo é muito grande. O limite é 50MB.', 'error');
+      e.target.value = '';
+      return;
+    }
+
+    setIsAppUploading(true);
+    try {
+      const storageRef = ref(storage, `apps/${Date.now()}_${file.name}`);
+      await uploadBytes(storageRef, file);
+      const url = await getDownloadURL(storageRef);
+      
+      // Update settings
+      await onUpdateSettings({
+        ...settings,
+        downloadUrl: url,
+        downloadFileName: file.name
+      });
+      
+      // Add to history
+      await onAddFileHistory(file.name, file.size, url);
+      
+      addNotification('Arquivo enviado com sucesso!', 'success');
+    } catch (error: any) {
+      console.error('Error uploading app:', error);
+      const errMsg = error.message || 'Erro desconhecido';
+      addNotification('Erro ao enviar arquivo.', 'error', errMsg);
+    } finally {
+      setIsAppUploading(false);
+      e.target.value = '';
+    }
+  };
 
   const [isShufflingLocal, setIsShufflingLocal] = useState(false);
   const [shuffleDisplay, setShuffleDisplay] = useState<Employee | null>(null);
@@ -718,6 +797,7 @@ const AdminPanel = ({
             { id: 'employees', label: 'Funcionário' },
             { id: 'lottery', label: 'Sorteio' },
             { id: 'settings', label: 'Configurações' },
+            { id: 'files', label: 'Arquivos' },
             { id: 'history', label: 'Histórico' },
             ...(currentUserRole === 'admin' ? [
               { id: 'database', label: 'Banco de Dados' },
@@ -1812,6 +1892,168 @@ const AdminPanel = ({
             </button>
           </div>
         )}
+
+        {activeTab === 'files' && (
+          <div className="space-y-8 max-w-4xl">
+            <div className="glass p-8 rounded-[40px] space-y-8">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-brand-primary/10 rounded-2xl flex items-center justify-center text-brand-primary">
+                    <Upload size={24} />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold uppercase tracking-tight text-white">Gerenciar Arquivos</h3>
+                    <p className="text-white/40 text-xs">Upload de arquivos para download dos usuários.</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-6">
+                <div className="p-8 border-2 border-dashed border-white/10 rounded-[32px] text-center space-y-4 hover:border-brand-primary/30 transition-all group relative overflow-hidden">
+                  {isAppUploading ? (
+                    <div className="py-8 space-y-4">
+                      <div className="w-12 h-12 border-4 border-brand-primary/20 border-t-brand-primary rounded-full animate-spin mx-auto" />
+                      <p className="text-[10px] font-black uppercase tracking-widest text-white/40">Enviando arquivo...</p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center mx-auto text-white/20 group-hover:scale-110 transition-transform">
+                        <Plus size={32} />
+                      </div>
+                      <div>
+                        <p className="text-white font-bold text-sm">Clique para selecionar um arquivo</p>
+                        <p className="text-[10px] text-white/40 font-black uppercase tracking-widest mt-1">Formatos suportados: APK, IPA, ZIP, etc. (Máx 50MB)</p>
+                      </div>
+                      <input 
+                        type="file"
+                        onChange={handleAppUpload}
+                        className="absolute inset-0 opacity-0 cursor-pointer"
+                      />
+                    </>
+                  )}
+                </div>
+
+                {settings.downloadUrl && (
+                  <div className="glass p-6 rounded-3xl border border-white/10 flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="w-10 h-10 bg-green-500/10 rounded-xl flex items-center justify-center text-green-500">
+                        <Check size={20} />
+                      </div>
+                      <div>
+                        <p className="text-white font-bold text-sm">Arquivo Atual (Ativo no Botão)</p>
+                        <p className="text-[10px] text-white/40 font-black uppercase tracking-widest truncate max-w-[200px]">
+                          {settings.downloadFileName || 'Arquivo enviado'}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <a 
+                        href={settings.downloadUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="p-3 rounded-xl bg-white/5 text-white/40 hover:bg-brand-primary hover:text-white transition-all"
+                        title="Baixar"
+                      >
+                        <Download size={16} />
+                      </a>
+                      <button 
+                        onClick={() => onUpdateSettings({ ...settings, downloadUrl: '', downloadFileName: '' })}
+                        className="p-3 rounded-xl bg-white/5 text-white/40 hover:bg-red-500 hover:text-white transition-all"
+                        title="Remover do Botão"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="glass p-8 rounded-[40px] space-y-8">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-brand-secondary/10 rounded-2xl flex items-center justify-center text-brand-secondary">
+                    <Database size={24} />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold uppercase tracking-tight text-white">Histórico de Uploads</h3>
+                    <p className="text-white/40 text-xs">Registros de todos os arquivos enviados.</p>
+                  </div>
+                </div>
+                {fileHistory.length > 0 && (
+                  <button 
+                    onClick={onClearFileHistory}
+                    className="px-4 py-2 rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white transition-all text-[10px] font-black uppercase tracking-widest"
+                  >
+                    Limpar Histórico
+                  </button>
+                )}
+              </div>
+
+              <div className="space-y-4">
+                {isLoadingFileHistory ? (
+                  <div className="py-12 text-center">
+                    <div className="w-8 h-8 border-2 border-brand-primary/20 border-t-brand-primary rounded-full animate-spin mx-auto mb-4" />
+                    <p className="text-[10px] font-black uppercase tracking-widest text-white/20">Carregando histórico...</p>
+                  </div>
+                ) : fileHistory.length === 0 ? (
+                  <div className="py-12 text-center border-2 border-dashed border-white/5 rounded-3xl">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-white/20">Nenhum upload registrado.</p>
+                  </div>
+                ) : (
+                  fileHistory.map((item) => (
+                    <div key={item.id} className="glass p-4 rounded-2xl border border-white/5 flex items-center justify-between group">
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center text-white/40">
+                          <Upload size={18} />
+                        </div>
+                        <div>
+                          <p className="text-white font-bold text-sm truncate max-w-[200px]">{item.fileName}</p>
+                          <div className="flex items-center gap-3 mt-1">
+                            <span className="text-[8px] font-black uppercase tracking-widest text-white/30">
+                              {new Date(item.timestamp).toLocaleString()}
+                            </span>
+                            <span className="text-[8px] font-black uppercase tracking-widest text-brand-secondary">
+                              {(item.fileSize / (1024 * 1024)).toFixed(2)} MB
+                            </span>
+                            <span className="text-[8px] font-black uppercase tracking-widest text-white/20">
+                              por {item.uploaderEmail}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button 
+                          onClick={() => onUpdateSettings({ ...settings, downloadUrl: item.downloadUrl, downloadFileName: item.fileName })}
+                          className="p-2 rounded-lg bg-white/5 text-white/40 hover:bg-brand-primary hover:text-white transition-all"
+                          title="Ativar no Botão"
+                        >
+                          <Zap size={14} />
+                        </button>
+                        <a 
+                          href={item.downloadUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="p-2 rounded-lg bg-white/5 text-white/40 hover:bg-brand-secondary hover:text-white transition-all"
+                          title="Baixar"
+                        >
+                          <Download size={14} />
+                        </a>
+                        <button 
+                          onClick={() => onDeleteFileHistoryItem(item.id)}
+                          className="p-2 rounded-lg bg-white/5 text-white/40 hover:bg-red-500 hover:text-white transition-all"
+                          title="Excluir Registro"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1854,6 +2096,18 @@ const HeroCard = ({ queueCount, settings }: { queueCount: number, settings: AppS
         </p>
         
         <div className="flex flex-wrap gap-3">
+          {settings.downloadUrl && (
+            <a 
+              href={settings.downloadUrl}
+              download={settings.downloadFileName || 'app'}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-6 py-3 rounded-full bg-brand-primary text-white flex items-center gap-3 hover:bg-brand-primary/80 transition-all shadow-lg shadow-brand-primary/20"
+            >
+              <Download size={16} />
+              <span className="text-xs font-black uppercase tracking-widest">Baixa App</span>
+            </a>
+          )}
           <div className="px-5 py-3 rounded-full glass flex items-center gap-3">
             <Clock size={16} className="text-brand-secondary" />
             <span className="text-xs font-bold tracking-widest">{time}</span>
@@ -2113,11 +2367,13 @@ function AppContent() {
 
   const [queue, setQueue] = useState<Employee[]>([]);
   const [history, setHistory] = useState<LotteryHistory[]>([]);
+  const [fileHistory, setFileHistory] = useState<FileHistory[]>([]);
   const [admins, setAdmins] = useState<AdminUser[]>([]);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [isLoadingQueue, setIsLoadingQueue] = useState(true);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
+  const [isLoadingFileHistory, setIsLoadingFileHistory] = useState(true);
   const [isLoadingAdmins, setIsLoadingAdmins] = useState(true);
   const [isLoadingSettings, setIsLoadingSettings] = useState(true);
 
@@ -2206,6 +2462,24 @@ function AppContent() {
     return () => unsubscribe();
   }, []);
 
+  // Firestore Real-time Sync: File History
+  useEffect(() => {
+    setIsLoadingFileHistory(true);
+    const q = query(collection(db, 'file_history'), orderBy('timestamp', 'desc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const items = snapshot.docs.map(doc => doc.data() as FileHistory);
+      setFileHistory(items);
+      setIsLoadingFileHistory(false);
+    }, (error) => {
+      // Only log if it's not a permission error during initial load
+      if (!error.message.includes('permissions')) {
+        handleFirestoreError(error, OperationType.LIST, 'file_history');
+      }
+      setIsLoadingFileHistory(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
   // Firestore Real-time Sync: Admins
   useEffect(() => {
     // We only fetch admins if we have a user (to avoid permission errors)
@@ -2267,26 +2541,30 @@ function AppContent() {
       
       const now = new Date();
       const currentDay = now.getDay();
-      const currentTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+      
+      // Manual formatting to avoid locale issues
+      const hours = now.getHours().toString().padStart(2, '0');
+      const minutes = now.getMinutes().toString().padStart(2, '0');
+      const currentTime = `${hours}:${minutes}`;
+      
       // Use local date string (YYYY-MM-DD) to avoid timezone issues with UTC
       const todayStr = now.toLocaleDateString('en-CA');
+      const targetTime = settings.lotteryTime || '11:00';
 
       if (
         (settings.lotteryDays || []).includes(currentDay) &&
-        currentTime === (settings.lotteryTime || '11:00') &&
+        currentTime === targetTime &&
         settings.lastLotteryDate !== todayStr &&
         queue.filter(e => e.isActive).length >= 2
       ) {
-        const success = await handleShuffle();
-        if (success) {
-          await updateSettings({ ...settings, lastLotteryDate: todayStr });
-        }
+        console.log('Triggering automatic lottery at', currentTime);
+        await handleShuffle();
       }
     };
 
     const interval = setInterval(checkLottery, 30000);
     return () => clearInterval(interval);
-  }, [settings, queue, admins]);
+  }, [settings, queue, admins, auth.currentUser]);
 
   const handleLogin = () => {
     // When handleLogin is called, we are likely in the middle of a login transition.
@@ -2427,9 +2705,12 @@ function AppContent() {
 
       // Add to history (separate batch/write)
       const historyId = Math.random().toString(36).substr(2, 9);
+      const now = new Date();
+      const todayStr = now.toLocaleDateString('en-CA'); // YYYY-MM-DD
+      
       const historyEntry: LotteryHistory = {
         id: historyId,
-        timestamp: new Date().toISOString(),
+        timestamp: now.toISOString(),
         winnerName: winner.name,
         winnerId: winner.id,
         fullList: shuffled.map(emp => ({ 
@@ -2438,7 +2719,11 @@ function AppContent() {
           ...(emp.photoUrl ? { photoUrl: emp.photoUrl } : {})
         }))
       };
+
       await setDoc(doc(db, 'history', historyId), historyEntry);
+      
+      // Update last lottery date in settings
+      await updateSettings({ ...settings, lastLotteryDate: todayStr });
 
       console.log('Sorteio concluído com sucesso. Vencedor:', winner.name);
       addNotification(`Sorteio realizado! Vencedor: ${winner.name}`, 'success');
@@ -2571,6 +2856,58 @@ function AppContent() {
     }
   };
 
+  const addFileHistory = async (fileName: string, fileSize: number, downloadUrl: string) => {
+    const id = Math.random().toString(36).substr(2, 9);
+    const historyEntry: FileHistory = {
+      id,
+      timestamp: new Date().toISOString(),
+      fileName,
+      fileSize,
+      uploaderEmail: auth.currentUser?.email || 'unknown',
+      downloadUrl
+    };
+    try {
+      await setDoc(doc(db, 'file_history', id), historyEntry);
+    } catch (err) {
+      console.error('Error adding file history:', err);
+    }
+  };
+
+  const deleteFileHistoryItem = async (id: string) => {
+    try {
+      await deleteDoc(doc(db, 'file_history', id));
+      addNotification('Registro removido do histórico de arquivos.', 'info');
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      addNotification('Erro ao remover item do histórico.', 'error', errMsg);
+      handleFirestoreError(err, OperationType.DELETE, `file_history/${id}`);
+    }
+  };
+
+  const clearFileHistory = async () => {
+    if (fileHistory.length === 0) return;
+    try {
+      const chunks = [];
+      for (let i = 0; i < fileHistory.length; i += 500) {
+        chunks.push(fileHistory.slice(i, i + 500));
+      }
+
+      for (const chunk of chunks) {
+        const batch = writeBatch(db);
+        chunk.forEach(item => {
+          batch.delete(doc(db, 'file_history', item.id));
+        });
+        await batch.commit();
+      }
+      
+      addNotification('Histórico de arquivos limpo com sucesso!', 'success');
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      addNotification('Erro ao limpar histórico de arquivos.', 'error', errMsg);
+      handleFirestoreError(err, OperationType.DELETE, 'file_history/clear');
+    }
+  };
+
   const setQueueBulk = async (newQueue: Employee[]) => {
     try {
       const batch = writeBatch(db);
@@ -2655,6 +2992,11 @@ function AppContent() {
           currentUserRole={currentUserRole}
           isLoadingQueue={isLoadingQueue}
           isLoadingHistory={isLoadingHistory}
+          fileHistory={fileHistory}
+          onDeleteFileHistoryItem={deleteFileHistoryItem}
+          onClearFileHistory={clearFileHistory}
+          onAddFileHistory={addFileHistory}
+          isLoadingFileHistory={isLoadingFileHistory}
           isLoadingAdmins={isLoadingAdmins}
           isLoadingSettings={isLoadingSettings}
           addNotification={addNotification}
