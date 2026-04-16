@@ -515,6 +515,23 @@ const AdminPanel = ({
   const [isAdminUploading, setIsAdminUploading] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
+  const handleCallNext = async () => {
+    const activeQueue = [...queue].filter(e => e.isActive).sort((a, b) => a.position - b.position);
+    if (activeQueue.length === 0) return;
+    
+    const currentFirst = activeQueue[0];
+    const maxPosition = queue.length > 0 ? Math.max(...queue.map(e => e.position)) : 0;
+    
+    try {
+      await updateDoc(doc(db, 'queue', currentFirst.id), { 
+        position: maxPosition + 1 
+      });
+      addNotification('Próximo funcionário chamado!', 'success');
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `queue/${currentFirst.id}`);
+    }
+  };
+
   const [activeTab, setActiveTab] = useState<'queue' | 'employees' | 'settings' | 'lottery' | 'database' | 'history' | 'admins' | 'files'>('queue');
   const [linkUrl, setLinkUrl] = useState('');
   const [linkName, setLinkName] = useState('');
@@ -561,7 +578,7 @@ const AdminPanel = ({
     };
     reader.onerror = () => {
       setIsAdminUploading(false);
-      alert("Erro ao ler arquivo.");
+      addNotification("Erro ao ler arquivo.", 'error');
     };
     reader.readAsDataURL(file);
   };
@@ -609,7 +626,7 @@ const AdminPanel = ({
     };
     reader.onerror = () => {
       setIsUploading(false);
-      alert("Erro ao ler arquivo.");
+      addNotification("Erro ao ler arquivo.", 'error');
     };
     reader.readAsDataURL(file);
   };
@@ -627,7 +644,7 @@ const AdminPanel = ({
     };
     reader.onerror = () => {
       setIsHeroUploading(false);
-      alert("Erro ao ler arquivo.");
+      addNotification("Erro ao ler arquivo.", 'error');
     };
     reader.readAsDataURL(file);
   };
@@ -811,6 +828,93 @@ const AdminPanel = ({
         {activeTab === 'queue' && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             <div className="md:col-span-2 space-y-8">
+              {/* Vencedor Atual Card */}
+              {(() => {
+                const activeQueueSorted = [...queue].filter(e => e.isActive).sort((a, b) => a.position - b.position);
+                const winner = activeQueueSorted[0];
+                if (!winner) return null;
+                
+                const prevPositions = history.map(h => {
+                  const p = h.fullList.findIndex(e => e.id === winner.id);
+                  return p !== -1 ? p + 1 : null;
+                }).filter(p => p !== null).slice(0, 5);
+
+                return (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="glass overflow-hidden rounded-[40px] flex flex-col border border-white/5"
+                  >
+                    {/* Top 40% - Photo */}
+                    <div className="h-64 md:h-80 w-full relative overflow-hidden bg-white/5">
+                      {winner.photoUrl ? (
+                        <img 
+                          src={winner.photoUrl} 
+                          alt={winner.name} 
+                          className="w-full h-full object-cover" 
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-white/10">
+                          <Users size={64} />
+                        </div>
+                      )}
+                      <div className="absolute inset-0 bg-gradient-to-t from-brand-bg via-transparent to-transparent" />
+                      <div className="absolute bottom-6 left-8">
+                        <span className="px-4 py-1.5 bg-brand-secondary text-brand-bg text-[10px] font-black uppercase tracking-widest rounded-full shadow-lg">
+                          Próximo na Fila
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Bottom Info */}
+                    <div className="p-8 md:p-10 space-y-8">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
+                        <div className="space-y-4">
+                          <div className="space-y-1">
+                            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white/30 ml-1">Nome</span>
+                            <h4 className="text-2xl md:text-3xl font-black uppercase tracking-tight text-white leading-none">
+                              {winner.name}
+                            </h4>
+                          </div>
+
+                          <div className="space-y-1">
+                            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white/30 ml-1">Posição Atual</span>
+                            <div className="flex items-center gap-3">
+                              <span className="text-2xl font-black text-brand-secondary">{winner.position}º</span>
+                              <span className="text-[10px] font-bold uppercase tracking-widest text-white/40">lugar na fila</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="space-y-4">
+                          <div className="space-y-2">
+                            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white/30 ml-1">Posições Anteriores</span>
+                            <div className="flex flex-wrap gap-2">
+                              {prevPositions.length > 0 ? prevPositions.map((pos, i) => (
+                                <span key={i} className="px-3 py-1 bg-white/5 rounded-lg text-[10px] font-bold text-white/60 border border-white/5">
+                                  {pos}º
+                                </span>
+                              )) : (
+                                <span className="text-[10px] font-bold text-white/20 uppercase tracking-widest">Nenhum registro</span>
+                              )}
+                            </div>
+                          </div>
+
+                          <button 
+                            onClick={handleCallNext}
+                            className="w-full h-14 bg-brand-primary hover:bg-brand-primary/90 text-white rounded-2xl flex items-center justify-center gap-3 text-xs font-black uppercase tracking-widest transition-all shadow-xl shadow-brand-primary/20 group"
+                          >
+                            <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
+                            Chamar Próximo
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </motion.div>
+                );
+              })()}
+
               <div className="space-y-4">
                 <h3 className="text-[10px] font-black uppercase tracking-[0.4em] text-white/30 ml-4">Ordem Atual ({queue.filter(e => e.isActive).length})</h3>
                 <div className="space-y-3">
@@ -820,7 +924,7 @@ const AdminPanel = ({
                     queue.filter(e => e.isActive).map((emp) => (
                       <div key={emp.id} className="glass p-4 md:p-5 rounded-[24px] md:rounded-[32px] flex items-center justify-between group">
                         <div className="flex items-center gap-4">
-                          <div className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center text-white/40 font-bold text-sm overflow-hidden">
+                          <div className="w-12 h-12 md:w-16 md:h-16 bg-white/5 rounded-xl flex items-center justify-center text-white/40 font-bold text-lg overflow-hidden shrink-0">
                             {emp.photoUrl ? (
                               <img src={emp.photoUrl} alt={emp.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                             ) : (
@@ -834,13 +938,6 @@ const AdminPanel = ({
                             </span>
                           </div>
                         </div>
-                        <button 
-                          onClick={() => onToggleActive(emp.id, emp.isActive)}
-                          className="px-4 py-2 bg-brand-primary/10 text-brand-primary hover:bg-brand-primary hover:text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 flex items-center gap-2"
-                        >
-                          <Check size={14} />
-                          Chamar
-                        </button>
                       </div>
                     ))
                   )}
@@ -878,9 +975,7 @@ const AdminPanel = ({
                 <div className="grid grid-cols-1 gap-3">
                   <button 
                     onClick={() => {
-                      if(confirm('Limpar toda a fila?')) {
-                        queue.forEach(e => onRemove(e.id));
-                      }
+                      queue.forEach(e => onRemove(e.id));
                     }}
                     className="w-full flex items-center gap-3 p-4 rounded-2xl bg-white/5 hover:bg-white/10 transition-all text-left group"
                   >
@@ -1008,10 +1103,10 @@ const AdminPanel = ({
                   {isLoadingQueue ? (
                     <SkeletonQueue />
                   ) : (
-                    queue.map((emp) => (
+                    [...queue].sort((a, b) => a.name.localeCompare(b.name)).map((emp) => (
                       <div key={emp.id} className={`glass p-4 md:p-5 rounded-[24px] md:rounded-[32px] flex items-center justify-between group transition-opacity ${!emp.isActive ? 'opacity-50' : ''}`}>
                         <div className="flex items-center gap-4">
-                          <div className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center text-white/40 font-bold text-sm overflow-hidden">
+                          <div className="w-12 h-12 md:w-16 md:h-16 bg-white/5 rounded-xl flex items-center justify-center text-white/40 font-bold text-lg overflow-hidden shrink-0">
                             {emp.photoUrl ? (
                               <img src={emp.photoUrl} alt={emp.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                             ) : (
@@ -1299,9 +1394,7 @@ const AdminPanel = ({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <button 
                   onClick={() => {
-                    if (confirm('Tem certeza que deseja limpar todo o histórico de sorteios?')) {
-                      onClearHistory();
-                    }
+                    onClearHistory();
                   }}
                   className="p-6 rounded-3xl bg-white/5 border border-white/5 hover:bg-red-500/10 hover:border-red-500/20 transition-all text-left group"
                 >
@@ -1314,9 +1407,7 @@ const AdminPanel = ({
 
                 <button 
                   onClick={() => {
-                    if (confirm('Tem certeza que deseja limpar toda a fila de funcionários?')) {
-                      queue.forEach(e => onRemove(e.id));
-                    }
+                    queue.forEach(e => onRemove(e.id));
                   }}
                   className="p-6 rounded-3xl bg-white/5 border border-white/5 hover:bg-red-500/10 hover:border-red-500/20 transition-all text-left group"
                 >
@@ -1362,9 +1453,7 @@ const AdminPanel = ({
               {history.length > 0 && (
                 <button 
                   onClick={() => {
-                    if (confirm('Tem certeza que deseja limpar todo o histórico?')) {
-                      onClearHistory();
-                    }
+                    onClearHistory();
                   }}
                   className="px-4 py-2 rounded-xl bg-red-500/10 text-red-500 text-[10px] font-black uppercase tracking-widest hover:bg-red-500 hover:text-white transition-all"
                 >
@@ -1411,9 +1500,7 @@ const AdminPanel = ({
                           <button 
                             onClick={(e) => {
                               e.stopPropagation();
-                              if (confirm('Excluir este registro do histórico?')) {
-                                onDeleteHistoryItem(item.id);
-                              }
+                              onDeleteHistoryItem(item.id);
                             }}
                             className="p-2 rounded-lg bg-white/5 text-white/20 hover:bg-red-500/10 hover:text-red-500 transition-all"
                           >
@@ -2242,7 +2329,7 @@ const QueueItem = React.forwardRef<HTMLDivElement, {
     >
       <div className="flex items-center gap-4 md:gap-6">
         <div className="relative">
-          <div className={`w-12 h-12 md:w-16 md:h-16 rounded-2xl flex items-center justify-center text-lg md:text-xl font-bold transition-all duration-500 overflow-hidden ${
+          <div className={`w-16 h-16 md:w-24 md:h-24 rounded-2xl flex items-center justify-center text-xl md:text-3xl font-bold transition-all duration-500 overflow-hidden ${
             isFirst ? 'bg-white/20 backdrop-blur-md text-white' : 'bg-white/5 text-white/30 group-hover:bg-brand-secondary/20 group-hover:text-brand-secondary'
           }`}>
             {employee.photoUrl ? (
@@ -2274,22 +2361,6 @@ const QueueItem = React.forwardRef<HTMLDivElement, {
       </div>
       
       <div className="flex items-center gap-3">
-        {isAdmin && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onCall?.(employee.id);
-            }}
-            className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 flex items-center gap-2 ${
-              isFirst 
-                ? 'bg-white text-brand-primary hover:bg-brand-secondary hover:text-brand-bg' 
-                : 'bg-brand-primary/10 text-brand-primary hover:bg-brand-primary hover:text-white'
-            }`}
-          >
-            <Check size={14} />
-            Chamar
-          </button>
-        )}
         <div className={`w-10 h-10 md:w-12 md:h-12 rounded-2xl flex items-center justify-center text-base md:text-lg font-black transition-all ${
           isFirst ? 'bg-white/10 text-white' : 'bg-white/5 text-white/20'
         }`}>
@@ -2595,7 +2666,7 @@ function AppContent() {
       id,
       name,
       isActive: true,
-      position: queue.length + 1,
+      position: (queue.length > 0 ? Math.max(...queue.map(e => e.position)) : 0) + 1,
       ...(photoUrl ? { photoUrl } : {})
     };
     try {
