@@ -30,7 +30,8 @@ import {
   Zap,
   Timer,
   Link as LinkIcon,
-  ExternalLink
+  ExternalLink,
+  Printer
 } from 'lucide-react';
 import { 
   auth, 
@@ -538,6 +539,133 @@ const AdminPanel = ({
       addNotification('Próximo funcionário chamado!', 'success');
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, 'settings/global');
+    }
+  };
+
+  const handlePrintHistory = (item: LotteryHistory) => {
+    const dateStr = new Date(item.timestamp).toLocaleDateString('pt-BR');
+    const timeStr = new Date(item.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    
+    const list = item.fullList || [];
+    const mid = Math.ceil(list.length / 2);
+    const leftCol = list.slice(0, mid);
+    const rightCol = list.slice(mid);
+
+    let html = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Fila do Almoço - ${dateStr}</title>
+          <style>
+            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { 
+              font-family: 'Inter', sans-serif; 
+              padding: 40px; 
+              color: #1a1a1a;
+              background: white;
+            }
+            .page {
+              max-width: 1000px;
+              margin: 0 auto;
+            }
+            .header { 
+              text-align: center; 
+              margin-bottom: 40px; 
+              border-bottom: 4px solid #059669;
+              padding-bottom: 25px;
+            }
+            .header h1 { 
+              font-size: 32px; 
+              font-weight: 900; 
+              text-transform: uppercase;
+              letter-spacing: 2px;
+              color: #059669;
+              margin-bottom: 8px;
+            }
+            .header p { 
+              font-size: 18px; 
+              color: #4b5563; 
+              font-weight: 700;
+              text-transform: uppercase;
+              letter-spacing: 3px;
+            }
+            .columns { 
+              display: grid;
+              grid-template-columns: 1fr 1fr;
+              gap: 60px;
+            }
+            .item { 
+              display: flex; 
+              align-items: center; 
+              padding: 10px 0; 
+              border-bottom: 1px solid #e5e7eb;
+              page-break-inside: avoid;
+            }
+            .pos { 
+              font-weight: 900; 
+              width: 50px; 
+              color: #059669;
+              font-size: 16px;
+            }
+            .name { 
+              font-weight: 700; 
+              text-transform: uppercase; 
+              font-size: 14px;
+              color: #111827;
+            }
+            @media print {
+              body { padding: 20px; }
+              .header h1 { font-size: 26px; }
+              .header p { font-size: 14px; }
+              .item { padding: 8px 0; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="page">
+            <div class="header">
+              <h1>FILA DO ALMOÇO EDIFÍCIO AMAZONAS</h1>
+              <p>DATA: ${dateStr} - ${timeStr}</p>
+            </div>
+            <div class="columns">
+              <div class="column">
+                ${leftCol.map((emp, i) => `
+                  <div class="item">
+                    <span class="pos">${i + 1}º</span>
+                    <span class="name">${emp.name}</span>
+                  </div>
+                `).join('')}
+              </div>
+              <div class="column">
+                ${rightCol.map((emp, i) => `
+                  <div class="item">
+                    <span class="pos">${mid + i + 1}º</span>
+                    <span class="name">${emp.name}</span>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          </div>
+          <script>
+            window.onload = () => {
+              window.print();
+              setTimeout(() => {
+                window.close();
+              }, 500);
+            };
+          </script>
+        </body>
+      </html>
+    `;
+
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const win = window.open(url, '_blank');
+    if (win) {
+      win.focus();
+    } else {
+      addNotification('Não foi possível abrir a janela de impressão. Verifique se os pop-ups estão bloqueados.', 'error');
     }
   };
 
@@ -1479,14 +1607,23 @@ const AdminPanel = ({
                 )}
               </div>
               {history.length > 0 && (
-                <button 
-                  onClick={() => {
-                    onClearHistory();
-                  }}
-                  className="px-4 py-2 rounded-xl bg-red-500/10 text-red-500 text-[10px] font-black uppercase tracking-widest hover:bg-red-500 hover:text-white transition-all"
-                >
-                  Limpar Histórico
-                </button>
+                <div className="flex items-center gap-3">
+                  <button 
+                    onClick={() => handlePrintHistory(history[0])}
+                    className="px-4 py-2 rounded-xl bg-brand-primary/10 text-brand-primary text-[10px] font-black uppercase tracking-widest hover:bg-brand-primary hover:text-white transition-all flex items-center gap-2"
+                  >
+                    <Printer size={14} />
+                    Imprimir Último
+                  </button>
+                  <button 
+                    onClick={() => {
+                      onClearHistory();
+                    }}
+                    className="px-4 py-2 rounded-xl bg-red-500/10 text-red-500 text-[10px] font-black uppercase tracking-widest hover:bg-red-500 hover:text-white transition-all"
+                  >
+                    Limpar Histórico
+                  </button>
+                </div>
               )}
             </div>
 
@@ -1525,6 +1662,16 @@ const AdminPanel = ({
                           {expandedHistory === item.id ? 'Ocultar' : 'Ver Lista'}
                         </div>
                         <div className="flex items-center gap-2">
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handlePrintHistory(item);
+                            }}
+                            className="p-2 rounded-lg bg-brand-primary/10 text-brand-primary hover:bg-brand-primary hover:text-white transition-all"
+                            title="Imprimir Lista"
+                          >
+                            <Printer size={14} />
+                          </button>
                           <button 
                             onClick={(e) => {
                               e.stopPropagation();
