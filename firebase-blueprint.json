@@ -45,7 +45,9 @@
         "headerSubtitle": { "type": "string" },
         "queueTitleLine1": { "type": "string" },
         "queueTitleLine2": { "type": "string" },
-        "queueSubtitle": { "type": "string" }
+        "queueSubtitle": { "type": "string" },
+        "endOfRoundPosition": { "type": "number" },
+        "currentCallPosition": { "type": "number" }
       },
       "required": ["heroTitleLine1", "heroTitleLine2", "heroSubtitle", "heroDescription", "lotteryTime", "lotteryDays", "headerTitleLine1", "headerTitleLine2", "headerSubtitle", "queueTitleLine1", "queueTitleLine2", "queueSubtitle"]
     },

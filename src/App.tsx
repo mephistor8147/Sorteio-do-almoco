@@ -90,6 +90,8 @@ interface AppSettings {
   queueSubtitle: string;
   downloadUrl?: string;
   downloadFileName?: string;
+  endOfRoundPosition?: number;
+  currentCallPosition?: number;
 }
 
 interface LotteryHistory {
@@ -137,7 +139,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   queueTitleLine2: 'SERVIÇO',
   queueSubtitle: 'Ordem de Prioridade',
   downloadUrl: '',
-  downloadFileName: ''
+  downloadFileName: '',
+  currentCallPosition: 1
 };
 
 const ADMIN_EMAILS = ['l2xbrasil@gmail.com', 'sorteioadm@sorteio.com'];
@@ -519,16 +522,22 @@ const AdminPanel = ({
     const activeQueue = [...queue].filter(e => e.isActive).sort((a, b) => a.position - b.position);
     if (activeQueue.length === 0) return;
     
-    const currentFirst = activeQueue[0];
-    const maxPosition = queue.length > 0 ? Math.max(...queue.map(e => e.position)) : 0;
+    const currentPos = settings.currentCallPosition || 1;
+    const nextInQueue = activeQueue.find(e => e.position > currentPos);
+    
+    if (!nextInQueue) {
+      addNotification('Todos os funcionários já foram chamados!', 'info');
+      return;
+    }
     
     try {
-      await updateDoc(doc(db, 'queue', currentFirst.id), { 
-        position: maxPosition + 1 
+      await onUpdateSettings({
+        ...settings,
+        currentCallPosition: nextInQueue.position
       });
       addNotification('Próximo funcionário chamado!', 'success');
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `queue/${currentFirst.id}`);
+      handleFirestoreError(err, OperationType.UPDATE, 'settings/global');
     }
   };
 
@@ -830,8 +839,10 @@ const AdminPanel = ({
             <div className="md:col-span-2 space-y-8">
               {/* Vencedor Atual Card */}
               {(() => {
+                const currentPos = settings.currentCallPosition || 1;
                 const activeQueueSorted = [...queue].filter(e => e.isActive).sort((a, b) => a.position - b.position);
-                const winner = activeQueueSorted[0];
+                const winner = activeQueueSorted.find(e => e.position >= currentPos) || activeQueueSorted[0];
+                
                 if (!winner) return null;
                 
                 const prevPositions = history.map(h => {
@@ -839,12 +850,23 @@ const AdminPanel = ({
                   return p !== -1 ? p + 1 : null;
                 }).filter(p => p !== null).slice(0, 5);
 
+                const lastActive = activeQueueSorted[activeQueueSorted.length - 1];
+                const isEndOfRound = winner.id === lastActive?.id;
+
                 return (
                   <motion.div 
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="glass overflow-hidden rounded-[40px] flex flex-col border border-white/5"
+                    className="glass overflow-hidden rounded-[40px] flex flex-col border border-white/5 relative"
                   >
+                    {isEndOfRound && (
+                      <div className="absolute top-0 inset-x-0 z-20 bg-brand-primary/90 backdrop-blur-md py-3 text-center border-b border-white/10 shadow-lg">
+                        <span className="text-[10px] font-black uppercase tracking-[0.5em] text-white animate-pulse">
+                          A chamada acabou
+                        </span>
+                      </div>
+                    )}
+                    
                     {/* Top 40% - Photo */}
                     <div className="h-64 md:h-80 w-full relative overflow-hidden bg-white/5">
                       {winner.photoUrl ? (
@@ -921,7 +943,13 @@ const AdminPanel = ({
                   {isLoadingQueue ? (
                     <SkeletonQueue />
                   ) : (
-                    queue.filter(e => e.isActive).map((emp) => (
+                    [...queue].filter(e => e.isActive).sort((a, b) => {
+                      const currentPos = settings.currentCallPosition || 1;
+                      const aCalled = a.position < currentPos;
+                      const bCalled = b.position < currentPos;
+                      if (aCalled !== bCalled) return aCalled ? 1 : -1;
+                      return a.position - b.position;
+                    }).map((emp) => (
                       <div key={emp.id} className="glass p-4 md:p-5 rounded-[24px] md:rounded-[32px] flex items-center justify-between group">
                         <div className="flex items-center gap-4">
                           <div className="w-12 h-12 md:w-16 md:h-16 bg-white/5 rounded-xl flex items-center justify-center text-white/40 font-bold text-lg overflow-hidden shrink-0">
@@ -2671,6 +2699,11 @@ function AppContent() {
     };
     try {
       await setDoc(doc(db, 'queue', id), newEmp);
+      // Update end of round position to include the new employee
+      await updateSettings({
+        ...settings,
+        endOfRoundPosition: newEmp.position
+      });
       addNotification(`${name} adicionado à fila!`, 'success');
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
@@ -2714,6 +2747,13 @@ function AppContent() {
         batch.update(doc(db, 'queue', emp.id), { position: idx + 1 });
       });
       await batch.commit();
+      
+      // Since we re-ordered everyone to 1..N, update endOfRoundPosition
+      await updateSettings({
+        ...settings,
+        endOfRoundPosition: remaining.length
+      });
+
       addNotification(`${empName} removido da fila.`, 'info');
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
@@ -2796,7 +2836,13 @@ function AppContent() {
       await setDoc(doc(db, 'history', historyId), historyEntry);
       
       // Update last lottery date in settings
-      await updateSettings({ ...settings, lastLotteryDate: todayStr });
+      const firstActive = shuffled[0];
+      await updateSettings({ 
+        ...settings, 
+        lastLotteryDate: todayStr,
+        endOfRoundPosition: activeEmployees.length,
+        currentCallPosition: 1
+      });
 
       console.log('Sorteio concluído com sucesso. Vencedor:', winner.name);
       addNotification(`Sorteio realizado! Vencedor: ${winner.name}`, 'success');
@@ -3001,9 +3047,16 @@ function AppContent() {
     }
   };
 
-  const filteredQueue = queue.filter(emp => 
-    emp.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredQueue = queue
+    .filter(emp => emp.name.toLowerCase().includes(searchQuery.toLowerCase()))
+    .sort((a, b) => {
+      const currentPos = settings.currentCallPosition || 1;
+      const aCalled = a.isActive && a.position < currentPos;
+      const bCalled = b.isActive && b.position < currentPos;
+      
+      if (aCalled !== bCalled) return aCalled ? 1 : -1;
+      return a.position - b.position;
+    });
 
   if (!isAuthReady || isLoadingSettings) {
     return <SystemLoader />;
