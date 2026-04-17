@@ -31,8 +31,10 @@ import {
   Timer,
   Link as LinkIcon,
   ExternalLink,
-  Printer
+  Printer,
+  FileDown
 } from 'lucide-react';
+import html2pdf from 'html2pdf.js';
 import { 
   auth, 
   db, 
@@ -666,6 +668,80 @@ const AdminPanel = ({
       win.focus();
     } else {
       addNotification('Não foi possível abrir a janela de impressão. Verifique se os pop-ups estão bloqueados.', 'error');
+    }
+  };
+
+  const handleDownloadPDF = async (item: LotteryHistory) => {
+    const dateStr = new Date(item.timestamp).toLocaleDateString('pt-BR');
+    const timeStr = new Date(item.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    
+    const list = item.fullList || [];
+    const mid = Math.ceil(list.length / 2);
+    const leftCol = list.slice(0, mid);
+    const rightCol = list.slice(mid);
+
+    const container = document.createElement('div');
+    container.style.position = 'absolute';
+    container.style.left = '0';
+    container.style.top = '0';
+    container.style.opacity = '0';
+    container.style.pointerEvents = 'none';
+    container.style.width = '210mm'; // A4 width
+    container.style.background = 'white';
+    
+    container.innerHTML = `
+      <div style="padding: 40px; font-family: Arial, sans-serif; color: #1a1a1a;">
+        <div style="text-align: center; margin-bottom: 40px; border-bottom: 4px solid #059669; padding-bottom: 25px;">
+          <h1 style="font-size: 28px; font-weight: 900; text-transform: uppercase; color: #059669; margin-bottom: 8px;">FILA DO ALMOÇO EDIFÍCIO AMAZONAS</h1>
+          <p style="font-size: 16px; color: #4b5563; font-weight: 700; text-transform: uppercase;">DATA: ${dateStr} - ${timeStr}</p>
+        </div>
+        <div style="display: flex; gap: 60px;">
+          <div style="flex: 1;">
+            ${leftCol.map((emp, i) => `
+              <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid #e5e7eb;">
+                <span style="font-weight: 900; width: 40px; color: #059669; font-size: 14px;">${i + 1}º</span>
+                <span style="font-weight: 700; text-transform: uppercase; font-size: 12px; color: #111827;">${emp.name}</span>
+              </div>
+            `).join('')}
+          </div>
+          <div style="flex: 1;">
+            ${rightCol.map((emp, i) => `
+              <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid #e5e7eb;">
+                <span style="font-weight: 900; width: 40px; color: #059669; font-size: 14px;">${mid + i + 1}º</span>
+                <span style="font-weight: 700; text-transform: uppercase; font-size: 12px; color: #111827;">${emp.name}</span>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(container);
+
+    const opt = {
+      margin: 10,
+      filename: `fila-almoco-${dateStr.replace(/\//g, '-')}.pdf`,
+      image: { type: 'jpeg' as const, quality: 0.98 },
+      html2canvas: { 
+        scale: 2, 
+        useCORS: true,
+        logging: false,
+        letterRendering: true
+      },
+      jsPDF: { unit: 'mm' as const, format: 'a4' as const, orientation: 'portrait' as const }
+    };
+
+    try {
+      addNotification('Gerando PDF...', 'info');
+      // Adding a small delay to ensure rendering
+      await new Promise(resolve => setTimeout(resolve, 100));
+      await html2pdf().set(opt).from(container).save();
+      addNotification('PDF baixado com sucesso!', 'success');
+    } catch (err) {
+      console.error('Erro ao gerar PDF:', err);
+      addNotification('Erro ao gerar PDF.', 'error');
+    } finally {
+      document.body.removeChild(container);
     }
   };
 
@@ -1613,7 +1689,14 @@ const AdminPanel = ({
                     className="px-4 py-2 rounded-xl bg-brand-primary/10 text-brand-primary text-[10px] font-black uppercase tracking-widest hover:bg-brand-primary hover:text-white transition-all flex items-center gap-2"
                   >
                     <Printer size={14} />
-                    Imprimir Último
+                    Imprimir
+                  </button>
+                  <button 
+                    onClick={() => handleDownloadPDF(history[0])}
+                    className="px-4 py-2 rounded-xl bg-brand-secondary/10 text-brand-secondary text-[10px] font-black uppercase tracking-widest hover:bg-brand-secondary hover:text-white transition-all flex items-center gap-2"
+                  >
+                    <FileDown size={14} />
+                    PDF
                   </button>
                   <button 
                     onClick={() => {
@@ -1671,6 +1754,16 @@ const AdminPanel = ({
                             title="Imprimir Lista"
                           >
                             <Printer size={14} />
+                          </button>
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDownloadPDF(item);
+                            }}
+                            className="p-2 rounded-lg bg-brand-secondary/10 text-brand-secondary hover:bg-brand-secondary hover:text-white transition-all"
+                            title="Baixar PDF"
+                          >
+                            <FileDown size={14} />
                           </button>
                           <button 
                             onClick={(e) => {
