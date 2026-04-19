@@ -16,8 +16,8 @@ import {
   LogOut,
   Database,
   UserPlus,
+  User as UserIcon,
   Dices,
-  Calendar,
   Sparkles,
   AlertCircle,
   Download,
@@ -35,6 +35,8 @@ import {
   FileDown
 } from 'lucide-react';
 import html2pdf from 'html2pdf.js';
+import * as XLSX from 'xlsx';
+import confetti from 'canvas-confetti';
 import { 
   auth, 
   db, 
@@ -65,7 +67,6 @@ import {
 import { initializeApp, deleteApp } from 'firebase/app';
 import { getAuth, signOut } from 'firebase/auth';
 import { motion, AnimatePresence } from 'motion/react';
-import * as XLSX from 'xlsx';
 
 // --- Types ---
 interface Employee {
@@ -84,7 +85,10 @@ interface AppSettings {
   heroBackgroundImage?: string;
   lotteryTime: string;
   lotteryDays: number[];
+  lotteryEnabled: boolean;
+  lotteryEnabledBy?: string;
   lastLotteryDate: string | null;
+  lastLotteryTimestamp?: string | null;
   headerTitleLine1: string;
   headerTitleLine2: string;
   headerSubtitle: string;
@@ -102,6 +106,7 @@ interface LotteryHistory {
   timestamp: string;
   winnerName: string;
   winnerId: string;
+  type?: 'manual' | 'automatic';
   fullList: { id: string; name: string; photoUrl?: string }[];
 }
 
@@ -134,7 +139,10 @@ const DEFAULT_SETTINGS: AppSettings = {
   heroBackgroundImage: '',
   lotteryTime: '11:00',
   lotteryDays: [1, 2, 3, 4, 5], // Seg-Sex
+  lotteryEnabled: false,
+  lotteryEnabledBy: '',
   lastLotteryDate: null,
+  lastLotteryTimestamp: null,
   headerTitleLine1: 'EDIFÍCIO',
   headerTitleLine2: 'AMAZONAS',
   headerSubtitle: 'Gourmet Experience',
@@ -147,14 +155,6 @@ const DEFAULT_SETTINGS: AppSettings = {
 };
 
 const ADMIN_EMAILS = ['l2xbrasil@gmail.com', 'sorteioadm@sorteio.com'];
-
-const MOCK_QUEUE: Employee[] = [
-  { id: '1', name: 'Ricardo Oliveira', position: 1, isActive: true },
-  { id: '2', name: 'Ana Beatriz Silva', position: 2, isActive: true },
-  { id: '3', name: 'Marcos Vinícius', position: 3, isActive: true },
-  { id: '4', name: 'Juliana Costa', position: 4, isActive: true },
-  { id: '5', name: 'Felipe Santos', position: 5, isActive: true },
-];
 
 // --- Error Boundary ---
 class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean }> {
@@ -223,21 +223,24 @@ const SkeletonQueue = React.forwardRef<HTMLDivElement>((_, ref) => (
 ));
 
 const SkeletonHistoryItem = () => (
-  <div className="glass p-6 rounded-[32px] border border-white/5 animate-pulse flex items-center justify-between">
-    <div className="flex items-center gap-6">
-      <div className="w-12 h-12 rounded-2xl bg-white/5" />
+  <div className="glass p-5 rounded-[32px] border border-white/5 animate-pulse flex flex-col gap-4">
+    <div className="flex items-center justify-between">
+      <div className="h-2 w-20 bg-white/5 rounded-full" />
+      <div className="h-2 w-12 bg-white/5 rounded-full" />
+    </div>
+    <div className="flex items-center gap-4">
+      <div className="w-10 h-10 rounded-xl bg-white/5" />
       <div className="space-y-2">
-        <div className="h-4 w-40 bg-white/10 rounded-full" />
-        <div className="h-2 w-24 bg-white/5 rounded-full" />
+        <div className="h-3 w-24 bg-white/10 rounded-full" />
+        <div className="h-2 w-16 bg-white/5 rounded-full" />
       </div>
     </div>
-    <div className="w-20 h-4 bg-white/5 rounded-full" />
   </div>
 );
 
 const SkeletonHistory = () => (
-  <div className="space-y-4">
-    {[1, 2, 3].map(i => <SkeletonHistoryItem key={i} />)}
+  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+    {[1, 2, 3, 4, 5, 6].map(i => <SkeletonHistoryItem key={i} />)}
   </div>
 );
 
@@ -454,6 +457,9 @@ const AdminPanel = ({
   settings,
   onUpdateSettings,
   onShuffle,
+  currentAdminName,
+  isShuffling,
+  shuffleDisplay,
   onSetQueue,
   onUpdateEmployee,
   onDeleteHistoryItem,
@@ -471,6 +477,7 @@ const AdminPanel = ({
   onDeleteFileHistoryItem,
   onClearFileHistory,
   onAddFileHistory,
+  onResetQueue,
   isLoadingFileHistory,
   isLoadingAdmins,
   isLoadingSettings,
@@ -483,7 +490,10 @@ const AdminPanel = ({
   onToggleActive: (id: string, currentStatus: boolean) => void,
   settings: AppSettings,
   onUpdateSettings: (settings: AppSettings) => void,
-  onShuffle: () => Promise<any>,
+  onShuffle: (type: 'manual' | 'automatic') => Promise<boolean>,
+  currentAdminName: string,
+  isShuffling: boolean,
+  shuffleDisplay: Employee | null,
   onSetQueue: (queue: Employee[]) => void,
   onUpdateEmployee: (id: string, name: string, photoUrl?: string) => void,
   onDeleteHistoryItem: (id: string) => void,
@@ -491,9 +501,9 @@ const AdminPanel = ({
   onClearHistory: () => void,
   onViewPublic: () => void,
   admins: AdminUser[],
-  onAddAdmin: (name: string, email: string, role: 'admin' | 'coordinator', password?: string, photoUrl?: string) => void,
-  onUpdateAdmin: (id: string, updates: Partial<AdminUser>) => void,
-  onDeleteAdmin: (id: string) => void,
+  onAddAdmin: (name: string, email: string, role: 'admin' | 'coordinator', password?: string, photoUrl?: string) => Promise<void>,
+  onUpdateAdmin: (id: string, updates: Partial<AdminUser>) => Promise<void>,
+  onDeleteAdmin: (id: string) => Promise<void>,
   currentUserRole: 'admin' | 'coordinator' | null,
   isLoadingQueue: boolean,
   isLoadingHistory: boolean,
@@ -501,6 +511,7 @@ const AdminPanel = ({
   onDeleteFileHistoryItem: (id: string) => void,
   onClearFileHistory: () => void,
   onAddFileHistory: (fileName: string, fileSize: number, downloadUrl: string) => void,
+  onResetQueue: () => Promise<void>,
   isLoadingFileHistory: boolean,
   isLoadingAdmins: boolean,
   isLoadingSettings: boolean,
@@ -517,9 +528,13 @@ const AdminPanel = ({
   const [adminPassword, setAdminPassword] = useState('');
   const [adminPhotoUrl, setAdminPhotoUrl] = useState('');
   const [adminRole, setAdminRole] = useState<'admin' | 'coordinator'>('coordinator');
+  const [adminConfirmPassword, setAdminConfirmPassword] = useState('');
   const [editingAdminId, setEditingAdminId] = useState<string | null>(null);
   const [isAdminUploading, setIsAdminUploading] = useState(false);
+  const [isSavingAdmin, setIsSavingAdmin] = useState(false);
+  const [showAddAdminConfirm, setShowAddAdminConfirm] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
 
   const handleCallNext = async () => {
     const activeQueue = [...queue].filter(e => e.isActive).sort((a, b) => a.position - b.position);
@@ -725,23 +740,29 @@ const AdminPanel = ({
       html2canvas: { 
         scale: 2, 
         useCORS: true,
-        logging: false,
-        letterRendering: true
+        logging: false
       },
       jsPDF: { unit: 'mm' as const, format: 'a4' as const, orientation: 'portrait' as const }
     };
 
     try {
       addNotification('Gerando PDF...', 'info');
-      // Adding a small delay to ensure rendering
-      await new Promise(resolve => setTimeout(resolve, 100));
+      // Ensure element is in DOM and styles are applied
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
       await html2pdf().set(opt).from(container).save();
+      
       addNotification('PDF baixado com sucesso!', 'success');
     } catch (err) {
       console.error('Erro ao gerar PDF:', err);
       addNotification('Erro ao gerar PDF.', 'error');
     } finally {
-      document.body.removeChild(container);
+      // Small delay before cleanup to be safe
+      setTimeout(() => {
+        if (container.parentNode) {
+          document.body.removeChild(container);
+        }
+      }, 500);
     }
   };
 
@@ -775,91 +796,73 @@ const AdminPanel = ({
     }
   };
 
-  const [isShufflingLocal, setIsShufflingLocal] = useState(false);
-  const [shuffleDisplay, setShuffleDisplay] = useState<Employee | null>(null);
 
-  const handleAdminFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAdminFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setIsAdminUploading(true);
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const base64 = event.target?.result as string;
-      setAdminPhotoUrl(base64);
+    try {
+      const storageRef = ref(storage, `admins/${Date.now()}-${file.name}`);
+      const snapshot = await uploadBytes(storageRef, file);
+      const downloadURL = await getDownloadURL(snapshot.ref);
+      setAdminPhotoUrl(downloadURL);
+      addNotification("Foto do administrador carregada!", 'success');
+    } catch (error: any) {
+      console.error("Error uploading admin photo:", error);
+      addNotification("Erro ao fazer upload da foto.", 'error', error.message);
+    } finally {
       setIsAdminUploading(false);
-    };
-    reader.onerror = () => {
-      setIsAdminUploading(false);
-      addNotification("Erro ao ler arquivo.", 'error');
-    };
-    reader.readAsDataURL(file);
+    }
   };
 
   const handleShuffleClick = async () => {
     const activeEmployees = queue.filter(e => e.isActive);
     if (activeEmployees.length < 2) return;
 
-    setIsShufflingLocal(true);
-    
-    // Visual shuffle animation
-    let iterations = 0;
-    const maxIterations = 15;
-    const interval = setInterval(() => {
-      const randomIndex = Math.floor(Math.random() * activeEmployees.length);
-      setShuffleDisplay(activeEmployees[randomIndex]);
-      iterations++;
-      if (iterations >= maxIterations) {
-        clearInterval(interval);
-      }
-    }, 100);
-
     try {
-      await onShuffle();
+      await onShuffle('manual');
     } catch (e) {
       console.error('Erro ao chamar onShuffle:', e);
-    } finally {
-      setTimeout(() => {
-        setIsShufflingLocal(false);
-        setShuffleDisplay(null);
-      }, 1600);
     }
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setIsUploading(true);
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const base64 = event.target?.result as string;
-      setNewPhotoUrl(base64);
+    try {
+      const storageRef = ref(storage, `employees/${Date.now()}-${file.name}`);
+      const snapshot = await uploadBytes(storageRef, file);
+      const downloadURL = await getDownloadURL(snapshot.ref);
+      setNewPhotoUrl(downloadURL);
+      addNotification("Foto carregada com sucesso!", 'success');
+    } catch (error: any) {
+      console.error("Error uploading employee photo:", error);
+      addNotification("Erro ao fazer upload da foto.", 'error', error.message);
+    } finally {
       setIsUploading(false);
-    };
-    reader.onerror = () => {
-      setIsUploading(false);
-      addNotification("Erro ao ler arquivo.", 'error');
-    };
-    reader.readAsDataURL(file);
+    }
   };
 
-  const handleHeroBackgroundUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleHeroBackgroundUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setIsHeroUploading(true);
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const base64 = event.target?.result as string;
-      setTempSettings({ ...tempSettings, heroBackgroundImage: base64 });
+    try {
+      const storageRef = ref(storage, `settings/${Date.now()}-${file.name}`);
+      const snapshot = await uploadBytes(storageRef, file);
+      const downloadURL = await getDownloadURL(snapshot.ref);
+      setTempSettings({ ...tempSettings, heroBackgroundImage: downloadURL });
+      addNotification("Imagem de fundo carregada!", 'success');
+    } catch (error: any) {
+      console.error("Error uploading hero background:", error);
+      addNotification("Erro ao fazer upload da imagem.", 'error', error.message);
+    } finally {
       setIsHeroUploading(false);
-    };
-    reader.onerror = () => {
-      setIsHeroUploading(false);
-      addNotification("Erro ao ler arquivo.", 'error');
-    };
-    reader.readAsDataURL(file);
+    }
   };
 
   const [expandedHistory, setExpandedHistory] = useState<string | null>(null);
@@ -971,23 +974,6 @@ const AdminPanel = ({
     e.target.value = '';
   };
 
-  const days = [
-    { id: 0, label: 'Dom' },
-    { id: 1, label: 'Segunda' },
-    { id: 2, label: 'Terça' },
-    { id: 3, label: 'Quarta' },
-    { id: 4, label: 'Quinta' },
-    { id: 5, label: 'Sexta' },
-    { id: 6, label: 'Sábado' },
-  ];
-
-  const toggleDay = (dayId: number) => {
-    const current = tempSettings.lotteryDays || [];
-    const updated = current.includes(dayId) 
-      ? current.filter(d => d !== dayId)
-      : [...current, dayId];
-    setTempSettings({ ...tempSettings, lotteryDays: updated });
-  };
 
   return (
     <div className="min-h-screen bg-brand-bg p-4 md:p-12">
@@ -1207,12 +1193,15 @@ const AdminPanel = ({
                 <div className="grid grid-cols-1 gap-3">
                   <button 
                     onClick={() => {
-                      queue.forEach(e => onRemove(e.id));
+                      onResetQueue();
                     }}
                     className="w-full flex items-center gap-3 p-4 rounded-2xl bg-white/5 hover:bg-white/10 transition-all text-left group"
                   >
                     <Database size={18} className="text-white/40 group-hover:text-brand-secondary" />
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-white/70">Limpar Fila</span>
+                    <div className="flex flex-col">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-white/70">Limpar Fila</span>
+                      <span className="text-[8px] text-white/20 uppercase font-medium">Reseta posições sem excluir</span>
+                    </div>
                   </button>
                 </div>
               </div>
@@ -1308,8 +1297,18 @@ const AdminPanel = ({
               </div>
 
               <div className="space-y-4">
-                <div className="flex items-center justify-between px-4">
-                  <h3 className="text-[10px] font-black uppercase tracking-[0.4em] text-white/30">Todos os Funcionários ({queue.length})</h3>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between px-4 gap-4">
+                  <h3 className="text-[10px] font-black uppercase tracking-[0.4em] text-white/30 whitespace-nowrap">Todos os Funcionários ({queue.length})</h3>
+                  <div className="flex-1 max-w-md relative">
+                    <Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20" />
+                    <input 
+                      type="text"
+                      placeholder="Buscar por nome..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="w-full bg-white/5 border border-white/10 rounded-xl py-2 pl-10 pr-4 text-xs text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all placeholder:text-white/10"
+                    />
+                  </div>
                   <div className="flex gap-2">
                     <button 
                       onClick={() => {
@@ -1335,7 +1334,10 @@ const AdminPanel = ({
                   {isLoadingQueue ? (
                     <SkeletonQueue />
                   ) : (
-                    [...queue].sort((a, b) => a.name.localeCompare(b.name)).map((emp) => (
+                    [...queue]
+                      .filter(emp => emp.name.toLowerCase().includes(searchTerm.toLowerCase()))
+                      .sort((a, b) => a.name.localeCompare(b.name))
+                      .map((emp) => (
                       <div key={emp.id} className={`glass p-4 md:p-5 rounded-[24px] md:rounded-[32px] flex items-center justify-between group transition-opacity ${!emp.isActive ? 'opacity-50' : ''}`}>
                         <div className="flex items-center gap-4">
                           <div className="w-12 h-12 md:w-16 md:h-16 bg-white/5 rounded-xl flex items-center justify-center text-white/40 font-bold text-lg overflow-hidden shrink-0">
@@ -1395,53 +1397,6 @@ const AdminPanel = ({
                 <SkeletonSettings />
               ) : (
                 <>
-                  <div className="glass p-8 rounded-[40px] space-y-8">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-xl font-bold uppercase tracking-tight flex items-center gap-3">
-                        <Calendar className="text-brand-secondary" size={20} /> Programação Automática
-                      </h3>
-                    </div>
-
-                    <div className="space-y-6">
-                      <div className="space-y-4">
-                        <label className="text-[10px] font-black uppercase tracking-[0.2em] text-white/40 ml-4">Dias da Semana</label>
-                        <div className="flex flex-wrap gap-2">
-                          {days.map(day => (
-                            <button
-                              key={day.id}
-                              onClick={() => toggleDay(day.id)}
-                              translate="no"
-                              className={`px-4 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border ${
-                                (tempSettings.lotteryDays || []).includes(day.id)
-                                  ? 'bg-brand-primary border-brand-primary text-white'
-                                  : 'bg-white/5 border-white/10 text-white/40 hover:text-white'
-                              }`}
-                            >
-                              {day.label}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div className="space-y-4">
-                        <label className="text-[10px] font-black uppercase tracking-[0.2em] text-white/40 ml-4">Horário do Sorteio</label>
-                        <input 
-                          type="time"
-                          value={tempSettings.lotteryTime || '11:00'}
-                          onChange={(e) => setTempSettings({ ...tempSettings, lotteryTime: e.target.value })}
-                          className="w-full sm:w-48 bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all"
-                        />
-                      </div>
-
-                      <button 
-                        onClick={() => onUpdateSettings(tempSettings)}
-                        className="w-full sm:w-auto px-12 bg-brand-primary hover:bg-brand-primary/80 text-white font-black uppercase tracking-[0.2em] py-4 rounded-2xl shadow-lg shadow-brand-primary/20 transition-all active:scale-95"
-                      >
-                        Salvar Programação
-                      </button>
-                    </div>
-                  </div>
-
                   {/* Histórico de Sorteios na aba Sorteio */}
                   <div className="glass p-8 rounded-[40px] space-y-6">
                     <div className="flex items-center justify-between">
@@ -1464,11 +1419,26 @@ const AdminPanel = ({
                         history.map((item) => (
                           <div key={item.id} className="bg-white/5 border border-white/10 rounded-2xl p-4 flex items-center justify-between group hover:bg-white/10 transition-all">
                             <div className="flex items-center gap-4">
-                              <div className="w-10 h-10 rounded-xl bg-brand-secondary/10 flex items-center justify-center text-brand-secondary">
-                                <Trophy size={18} />
+                              <div className="w-10 h-10 rounded-xl bg-brand-secondary/10 overflow-hidden flex items-center justify-center text-brand-secondary shrink-0 border border-white/5">
+                                {item.fullList?.[0]?.photoUrl ? (
+                                  <img src={item.fullList[0].photoUrl} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                ) : (
+                                  <Trophy size={18} />
+                                )}
                               </div>
                               <div>
-                                <p className="text-white font-bold text-sm">{item.winnerName}</p>
+                                <div className="flex items-center gap-2">
+                                  <p className="text-orange-400 font-bold text-sm">{item.winnerName}</p>
+                                  {item.type && (
+                                    <span className={`text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-md ${
+                                      item.type === 'automatic' 
+                                        ? 'bg-blue-500/10 text-blue-400' 
+                                        : 'bg-orange-500/10 text-orange-400'
+                                    }`}>
+                                      {item.type === 'automatic' ? 'Automático' : 'Manual'}
+                                    </span>
+                                  )}
+                                </div>
                                 <p className="text-[10px] text-white/40 font-black uppercase tracking-widest">
                                   {new Date(item.timestamp).toLocaleString('pt-BR')}
                                 </p>
@@ -1491,7 +1461,7 @@ const AdminPanel = ({
 
             <div className="space-y-6">
               <div className="glass p-8 rounded-[40px] space-y-6 text-center relative overflow-hidden">
-                {isShufflingLocal && (
+                {isShuffling && (
                   <motion.div 
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
@@ -1538,7 +1508,7 @@ const AdminPanel = ({
                 </div>
                 <button 
                   onClick={handleShuffleClick}
-                  disabled={isShufflingLocal || queue.filter(e => e.isActive).length < 2}
+                  disabled={isShuffling || queue.filter(e => e.isActive).length < 2}
                   className="w-full bg-brand-secondary hover:bg-brand-secondary/80 text-brand-bg font-black uppercase tracking-[0.2em] py-4 rounded-2xl shadow-lg shadow-brand-secondary/20 transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Sparkles size={18} />
@@ -1549,6 +1519,73 @@ const AdminPanel = ({
                     Mínimo de 2 funcionários ativos necessário
                   </p>
                 )}
+              </div>
+
+              {/* Sorteio Programado Card */}
+              <div className="glass p-8 rounded-[40px] space-y-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-blue-500/10 rounded-2xl flex items-center justify-center text-blue-500">
+                      <Timer size={24} />
+                    </div>
+                    <div className="text-left">
+                      <h3 className="text-lg font-bold uppercase tracking-tight text-white">Sorteio Programado</h3>
+                      <p className="text-white/40 text-[10px] font-medium leading-relaxed">Configuração de sorteio automático.</p>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => {
+                      const enabled = !settings.lotteryEnabled;
+                      onUpdateSettings({ 
+                        ...settings, 
+                        lotteryEnabled: enabled,
+                        lotteryEnabledBy: enabled ? currentAdminName : (settings.lotteryEnabledBy || '')
+                      });
+                    }}
+                    className={`w-12 h-6 rounded-full transition-all relative ${settings.lotteryEnabled ? 'bg-green-500' : 'bg-white/10'}`}
+                  >
+                    <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${settings.lotteryEnabled ? 'right-1' : 'left-1'}`} />
+                  </button>
+                </div>
+
+                <div className="space-y-4 pt-2">
+                  <div className="grid grid-cols-7 gap-1">
+                    {['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((day, i) => (
+                      <button
+                        key={i}
+                        onClick={() => {
+                          const newDays = settings.lotteryDays.includes(i)
+                            ? settings.lotteryDays.filter(d => d !== i)
+                            : [...settings.lotteryDays, i].sort();
+                          onUpdateSettings({ ...settings, lotteryDays: newDays });
+                        }}
+                        className={`py-2 rounded-lg text-[10px] font-black transition-all ${
+                          settings.lotteryDays.includes(i)
+                            ? 'bg-brand-secondary text-brand-bg shadow-sm'
+                            : 'bg-white/5 text-white/40 hover:bg-white/10'
+                        }`}
+                      >
+                        {day}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="flex items-center gap-3 bg-white/5 border border-white/5 rounded-2xl p-3">
+                    <Clock size={16} className="text-white/20" />
+                    <input 
+                      type="time" 
+                      value={settings.lotteryTime}
+                      onChange={(e) => onUpdateSettings({ ...settings, lotteryTime: e.target.value })}
+                      className="bg-transparent text-white text-xs font-bold focus:outline-none w-full [color-scheme:dark]"
+                    />
+                  </div>
+                </div>
+
+                <div className="bg-blue-500/5 border border-blue-500/10 rounded-2xl p-4">
+                  <p className="text-[10px] text-blue-400/80 leading-relaxed font-medium">
+                    O sorteio automático será realizado nos dias e horários selecionados, seguindo a mesma lógica do sorteio casual.
+                  </p>
+                </div>
               </div>
             </div>
           </div>
@@ -1639,7 +1676,7 @@ const AdminPanel = ({
 
                 <button 
                   onClick={() => {
-                    queue.forEach(e => onRemove(e.id));
+                    onResetQueue();
                   }}
                   className="p-6 rounded-3xl bg-white/5 border border-white/5 hover:bg-red-500/10 hover:border-red-500/20 transition-all text-left group"
                 >
@@ -1647,7 +1684,7 @@ const AdminPanel = ({
                     <span className="text-[10px] font-black uppercase tracking-widest text-white/60 group-hover:text-red-400">Limpar Fila</span>
                     <Users size={16} className="text-white/20 group-hover:text-red-400" />
                   </div>
-                  <p className="text-[10px] text-white/30 leading-relaxed">Remove todos os funcionários cadastrados no sistema.</p>
+                  <p className="text-[10px] text-white/30 leading-relaxed">Reseta as posições e o status de sorteio de todos os funcionários sem excluí-los.</p>
                 </button>
               </div>
             </div>
@@ -1710,11 +1747,11 @@ const AdminPanel = ({
               )}
             </div>
 
-            <div className="space-y-4">
+            <div className={history.length > 0 ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" : "space-y-4"}>
               {isLoadingHistory ? (
                 <SkeletonHistory />
               ) : history.length === 0 ? (
-                <div className="glass p-12 rounded-[40px] text-center space-y-4">
+                <div className="col-span-full glass p-12 rounded-[40px] text-center space-y-4">
                   <div className="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center mx-auto text-white/20">
                     <Clock size={32} />
                   </div>
@@ -1722,36 +1759,52 @@ const AdminPanel = ({
                 </div>
               ) : (
                 history.map((item) => (
-                  <div key={item.id} className="space-y-2">
+                  <div key={item.id} className={`flex flex-col gap-2 ${expandedHistory === item.id ? 'col-span-full' : ''}`}>
                     <motion.div 
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
                       onClick={() => setExpandedHistory(expandedHistory === item.id ? null : item.id)}
-                      className="glass p-4 md:p-6 rounded-[24px] md:rounded-[32px] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 group cursor-pointer hover:bg-white/5 transition-all"
+                      className={`glass p-5 rounded-[32px] flex flex-col gap-4 group cursor-pointer hover:bg-white/5 transition-all border border-white/5 ${expandedHistory === item.id ? 'bg-white/5 ring-1 ring-brand-secondary/20' : ''}`}
                     >
-                      <div className="flex items-center gap-4 md:gap-6 w-full sm:w-auto">
-                        <div className="w-10 h-10 md:w-12 md:h-12 bg-brand-primary/10 rounded-xl md:rounded-2xl flex items-center justify-center text-brand-primary shrink-0">
-                          <Trophy size={20} className="md:w-6 md:h-6" />
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Clock size={12} className="text-brand-secondary" />
+                          <span className="text-[9px] font-black uppercase tracking-widest text-white/40">
+                            {new Date(item.timestamp).toLocaleDateString('pt-BR')}
+                          </span>
                         </div>
-                        <div className="min-w-0">
-                          <h4 className="text-white font-bold uppercase tracking-tight text-sm md:text-base truncate">Vencedor: {item.winnerName}</h4>
-                          <p className="text-white/40 text-[8px] md:text-[10px] font-black uppercase tracking-widest mt-1">
-                            {new Date(item.timestamp).toLocaleDateString('pt-BR')} às {new Date(item.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                          </p>
+                        <span className="text-[9px] font-black uppercase tracking-widest text-brand-secondary">
+                          {new Date(item.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 bg-white/5 rounded-2xl overflow-hidden shrink-0 border border-white/10 p-0.5">
+                          {item.fullList?.[0]?.photoUrl ? (
+                            <img src={item.fullList[0].photoUrl} alt="" className="w-full h-full object-cover rounded-xl" referrerPolicy="no-referrer" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-brand-primary bg-brand-primary/10 rounded-xl">
+                              <Trophy size={20} />
+                            </div>
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <span className="text-[8px] font-black uppercase tracking-[0.2em] text-white/30 block mb-1">Vencedor</span>
+                          <h4 className="text-white font-bold uppercase tracking-tight text-sm truncate group-hover:text-brand-secondary transition-colors">
+                            {item.winnerName}
+                          </h4>
                         </div>
                       </div>
-                      <div className="flex items-center justify-between sm:justify-end gap-4 w-full sm:w-auto border-t border-white/5 sm:border-0 pt-3 sm:pt-0">
-                        <div className="text-brand-secondary text-[8px] font-black uppercase tracking-widest">
-                          {expandedHistory === item.id ? 'Ocultar' : 'Ver Lista'}
-                        </div>
-                        <div className="flex items-center gap-2">
+
+                      <div className="flex items-center justify-between pt-2 border-t border-white/5">
+                        <div className="flex items-center gap-1.5">
                           <button 
                             onClick={(e) => {
                               e.stopPropagation();
                               handlePrintHistory(item);
                             }}
-                            className="p-2 rounded-lg bg-brand-primary/10 text-brand-primary hover:bg-brand-primary hover:text-white transition-all"
-                            title="Imprimir Lista"
+                            className="p-2 rounded-xl bg-white/5 text-white/30 hover:bg-brand-primary hover:text-white transition-all"
+                            title="Imprimir"
                           >
                             <Printer size={14} />
                           </button>
@@ -1760,8 +1813,8 @@ const AdminPanel = ({
                               e.stopPropagation();
                               handleDownloadPDF(item);
                             }}
-                            className="p-2 rounded-lg bg-brand-secondary/10 text-brand-secondary hover:bg-brand-secondary hover:text-white transition-all"
-                            title="Baixar PDF"
+                            className="p-2 rounded-xl bg-white/5 text-white/30 hover:bg-brand-secondary hover:text-white transition-all"
+                            title="PDF"
                           >
                             <FileDown size={14} />
                           </button>
@@ -1770,11 +1823,18 @@ const AdminPanel = ({
                               e.stopPropagation();
                               onDeleteHistoryItem(item.id);
                             }}
-                            className="p-2 rounded-lg bg-white/5 text-white/20 hover:bg-red-500/10 hover:text-red-500 transition-all"
+                            className="p-2 rounded-xl bg-white/5 text-white/30 hover:bg-red-500/10 hover:text-red-500 transition-all"
+                            title="Excluir"
                           >
                             <Trash2 size={14} />
                           </button>
-                          <ChevronDown size={16} className={`text-white/20 transition-transform ${expandedHistory === item.id ? 'rotate-180' : ''}`} />
+                        </div>
+
+                        <div className={`px-3 py-1.5 rounded-full text-[8px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${
+                          expandedHistory === item.id ? 'bg-brand-secondary text-brand-bg' : 'bg-white/5 text-white/40'
+                        }`}>
+                          {expandedHistory === item.id ? 'Fechar' : 'Ver Lista'}
+                          <ChevronDown size={10} className={`transition-transform duration-300 ${expandedHistory === item.id ? 'rotate-180' : ''}`} />
                         </div>
                       </div>
                     </motion.div>
@@ -1787,28 +1847,39 @@ const AdminPanel = ({
                           exit={{ height: 0, opacity: 0 }}
                           className="overflow-hidden"
                         >
-                          <div className="glass mx-4 p-6 rounded-b-[32px] border-t-0 space-y-3">
-                            <h5 className="text-[8px] font-black uppercase tracking-[0.4em] text-white/30 mb-4">Ordem Sorteada</h5>
-                            {item.fullList?.map((emp, idx) => (
-                              <div key={emp.id} className="flex items-center justify-between py-2 border-b border-white/5 last:border-0">
-                                <div className="flex items-center gap-3">
-                                  <span className="text-[10px] font-black text-brand-secondary w-4">{idx + 1}º</span>
-                                  <div className="w-6 h-6 rounded-full bg-white/5 overflow-hidden">
-                                    {emp.photoUrl ? (
-                                      <img src={emp.photoUrl} alt={emp.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                                    ) : (
-                                      <div className="w-full h-full flex items-center justify-center text-[8px] text-white/20 font-bold">
-                                        {emp.name.charAt(0)}
-                                      </div>
-                                    )}
+                          <div className="glass p-6 rounded-[32px] border border-white/5 space-y-3 bg-white/5">
+                            <div className="flex items-center justify-between mb-4">
+                              <h5 className="text-[10px] font-black uppercase tracking-[0.4em] text-brand-secondary">Ordem Sorteada</h5>
+                              <span className="text-[8px] font-bold text-white/20 uppercase tracking-widest">
+                                {item.fullList?.length} Funcionários
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2">
+                              {item.fullList?.map((emp, idx) => (
+                                <div key={emp.id} className="flex items-center justify-between py-2 border-b border-white/5 last:border-0 group/item">
+                                  <div className="flex items-center gap-3">
+                                    <span className={`text-[10px] font-black w-5 ${idx === 0 ? 'text-brand-secondary' : 'text-white/20'}`}>
+                                      {idx + 1}º
+                                    </span>
+                                    <div className="w-8 h-8 rounded-lg bg-white/5 overflow-hidden border border-white/5">
+                                      {emp.photoUrl ? (
+                                        <img src={emp.photoUrl} alt={emp.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                      ) : (
+                                        <div className="w-full h-full flex items-center justify-center text-[10px] text-white/20 font-bold bg-white/5">
+                                          {emp.name.charAt(0)}
+                                        </div>
+                                      )}
+                                    </div>
+                                    <span className={`text-xs font-bold uppercase tracking-tight transition-colors ${idx === 0 ? 'text-brand-secondary' : 'text-white/70 group-hover/item:text-white'}`}>
+                                      {emp.name}
+                                    </span>
                                   </div>
-                                  <span className="text-xs text-white/70 font-bold uppercase tracking-tight">{emp.name}</span>
+                                  {idx === 0 && (
+                                    <span className="text-[8px] font-black uppercase tracking-widest text-brand-secondary bg-brand-secondary/10 px-2 py-1 rounded-full">Vencedor</span>
+                                  )}
                                 </div>
-                                {idx === 0 && (
-                                  <span className="text-[8px] font-black uppercase tracking-widest text-brand-secondary bg-brand-secondary/10 px-2 py-1 rounded-full">Vencedor</span>
-                                )}
-                              </div>
-                            ))}
+                              ))}
+                            </div>
                           </div>
                         </motion.div>
                       )}
@@ -1856,7 +1927,17 @@ const AdminPanel = ({
                       type="password"
                       value={adminPassword}
                       onChange={(e) => setAdminPassword(e.target.value)}
-                      placeholder="••••••••"
+                      placeholder={editingAdminId ? "Nova senha (opcional)" : "Mínimo 6 caracteres"}
+                      className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-4">Confirmar Senha</label>
+                    <input 
+                      type="password"
+                      value={adminConfirmPassword}
+                      onChange={(e) => setAdminConfirmPassword(e.target.value)}
+                      placeholder="Repita a senha"
                       className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all"
                     />
                   </div>
@@ -1916,8 +1997,18 @@ const AdminPanel = ({
                       const trimmedName = adminName.trim();
                       const trimmedEmail = adminEmail.trim().toLowerCase();
                       
-                      if (!trimmedName || !trimmedEmail) {
-                        addNotification('Nome e email são obrigatórios.', 'error');
+                      if (!trimmedName) {
+                        addNotification('Nome é obrigatório.', 'error');
+                        return;
+                      }
+                      
+                      if (trimmedName.length < 3) {
+                        addNotification('O nome deve ter pelo menos 3 caracteres.', 'error');
+                        return;
+                      }
+
+                      if (!trimmedEmail) {
+                        addNotification('Email é obrigatório.', 'error');
                         return;
                       }
 
@@ -1928,28 +2019,46 @@ const AdminPanel = ({
                         return;
                       }
 
+                      if (!editingAdminId && !adminPassword) {
+                        addNotification('Senha é obrigatória para novos administradores.', 'error');
+                        return;
+                      }
+
+                      if (adminPassword && adminPassword.length < 6) {
+                        addNotification('A senha deve ter pelo menos 6 caracteres.', 'error');
+                        return;
+                      }
+
+                      if (adminPassword !== adminConfirmPassword) {
+                        addNotification('As senhas não coincidem.', 'error');
+                        return;
+                      }
+
                       if (editingAdminId) {
+                        setIsSavingAdmin(true);
                         onUpdateAdmin(editingAdminId, { 
                           name: trimmedName, 
                           email: trimmedEmail, 
                           role: adminRole,
                           password: adminPassword || undefined,
                           photoUrl: adminPhotoUrl || undefined
+                        }).finally(() => {
+                          setIsSavingAdmin(false);
+                          setEditingAdminId(null);
+                          setAdminName('');
+                          setAdminEmail('');
+                          setAdminPassword('');
+                          setAdminConfirmPassword('');
+                          setAdminPhotoUrl('');
+                          setAdminRole('coordinator');
                         });
-                        setEditingAdminId(null);
                       } else {
-                        onAddAdmin(trimmedName, trimmedEmail, adminRole, adminPassword, adminPhotoUrl);
+                        setShowAddAdminConfirm(true);
                       }
-                      
-                      setAdminName('');
-                      setAdminEmail('');
-                      setAdminPassword('');
-                      setAdminPhotoUrl('');
-                      setAdminRole('coordinator');
                     }}
-                    className={`flex-1 bg-brand-primary text-white font-black uppercase tracking-widest py-4 rounded-2xl shadow-lg transition-all active:scale-95 ${isAdminUploading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    className={`flex-1 bg-brand-primary text-white font-black uppercase tracking-widest py-4 rounded-2xl shadow-lg transition-all active:scale-95 ${(isAdminUploading || isSavingAdmin) ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
-                    {isAdminUploading ? 'Enviando...' : (editingAdminId ? 'Salvar Alterações' : 'Criar Administrador')}
+                    {(isAdminUploading || isSavingAdmin) ? 'Processando...' : (editingAdminId ? 'Salvar Alterações' : 'Criar Administrador')}
                   </button>
                   {editingAdminId && (
                         <button 
@@ -1958,6 +2067,7 @@ const AdminPanel = ({
                             setAdminName('');
                             setAdminEmail('');
                             setAdminPassword('');
+                            setAdminConfirmPassword('');
                             setAdminPhotoUrl('');
                             setAdminRole('coordinator');
                           }}
@@ -1967,6 +2077,82 @@ const AdminPanel = ({
                         </button>
                   )}
                 </div>
+
+                <AnimatePresence>
+                  {showAddAdminConfirm && (
+                    <motion.div 
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="fixed inset-0 z-[500] flex items-center justify-center p-4 bg-brand-bg/90 backdrop-blur-sm"
+                    >
+                      <motion.div 
+                        initial={{ scale: 0.9, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        exit={{ scale: 0.9, opacity: 0 }}
+                        className="glass max-w-md w-full p-8 rounded-[40px] space-y-6"
+                      >
+                        <div className="w-16 h-16 bg-brand-primary/20 rounded-2xl flex items-center justify-center text-brand-primary mx-auto">
+                          <UserPlus size={32} />
+                        </div>
+                        <div className="text-center space-y-2">
+                          <h4 className="text-xl font-bold uppercase tracking-tight text-white">Confirmar Cadastro</h4>
+                          <p className="text-white/40 text-xs leading-relaxed">
+                            Você está prestes a criar um novo acesso com nível 
+                            <span className="text-brand-secondary font-black mx-1">
+                              {adminRole === 'admin' ? 'ADMINISTRADOR' : 'COORDENADOR'}
+                            </span>
+                            para o email <span className="text-white font-bold">{adminEmail}</span>.
+                          </p>
+                        </div>
+                        
+                        <div className="bg-white/5 rounded-2xl p-4 space-y-3">
+                          <div className="flex justify-between items-center text-[10px]">
+                            <span className="text-white/40 font-black uppercase tracking-widest">Nome</span>
+                            <span className="text-white font-bold uppercase tracking-tight">{adminName}</span>
+                          </div>
+                          <div className="flex justify-between items-center text-[10px]">
+                            <span className="text-white/40 font-black uppercase tracking-widest">Nível</span>
+                            <span className="text-brand-secondary font-black uppercase tracking-widest">{adminRole}</span>
+                          </div>
+                        </div>
+
+                        <div className="flex gap-3">
+                          <button 
+                            disabled={isSavingAdmin}
+                            onClick={() => setShowAddAdminConfirm(false)}
+                            className="flex-1 py-4 glass text-white/40 font-black uppercase tracking-widest rounded-2xl hover:text-white transition-all disabled:opacity-50"
+                          >
+                            Cancelar
+                          </button>
+                          <button 
+                            disabled={isSavingAdmin}
+                            onClick={async () => {
+                              setIsSavingAdmin(true);
+                              try {
+                                await onAddAdmin(adminName.trim(), adminEmail.trim().toLowerCase(), adminRole, adminPassword, adminPhotoUrl);
+                                setAdminName('');
+                                setAdminEmail('');
+                                setAdminPassword('');
+                                setAdminConfirmPassword('');
+                                setAdminPhotoUrl('');
+                                setAdminRole('coordinator');
+                              } catch (err) {
+                                // Error already handled in onAddAdmin, but we want to know if it finished
+                              } finally {
+                                setIsSavingAdmin(false);
+                                setShowAddAdminConfirm(false);
+                              }
+                            }}
+                            className="flex-1 py-4 bg-brand-primary text-white font-black uppercase tracking-widest rounded-2xl shadow-lg shadow-brand-primary/20 hover:scale-105 transition-all disabled:opacity-50"
+                          >
+                            {isSavingAdmin ? 'Criando...' : 'Confirmar'}
+                          </button>
+                        </div>
+                      </motion.div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
 
               <div className="space-y-4">
@@ -1982,76 +2168,98 @@ const AdminPanel = ({
                     Nenhum administrador cadastrado.
                   </div>
                 ) : (
-                  admins.map((admin) => (
-                    <div key={admin.id} className={`glass p-6 rounded-[32px] flex items-center justify-between group transition-all ${!admin.isActive ? 'opacity-50' : ''}`}>
-                      <div className="flex items-center gap-6">
-                        <div className="w-16 h-16 rounded-2xl bg-white/5 flex items-center justify-center overflow-hidden">
-                          {admin.photoUrl ? (
-                            <img src={admin.photoUrl} alt={admin.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                          ) : (
-                            <span className="text-xl font-bold text-white/20">{admin.name.charAt(0)}</span>
-                          )}
-                        </div>
-                        <div>
-                          <h4 className="text-white font-bold uppercase tracking-tight">{admin.name}</h4>
-                          <p className="text-brand-secondary text-[10px] font-black uppercase tracking-widest mt-1">{admin.email}</p>
-                          <div className="flex items-center gap-2 mt-2">
-                            <span className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full ${admin.isActive ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
-                              {admin.isActive ? 'Ativo' : 'Inativo'}
-                            </span>
-                            <span className="text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-white/10 text-white/60">
-                              {admin.role === 'admin' ? 'Administrador' : 'Coordenador'}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button 
-                          onClick={() => onUpdateAdmin(admin.id, { isActive: !admin.isActive })}
-                          className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${admin.isActive ? 'bg-green-500/10 text-green-400 hover:bg-green-500 hover:text-white' : 'bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white'}`}
-                          title={admin.isActive ? 'Desativar' : 'Ativar'}
-                        >
-                          {admin.isActive ? <Check size={16} /> : <X size={16} />}
-                        </button>
-                        <button 
-                          onClick={() => {
-                            setEditingAdminId(admin.id);
-                            setAdminName(admin.name);
-                            setAdminEmail(admin.email);
-                            setAdminRole(admin.role || 'coordinator');
-                            setAdminPassword(admin.password || '');
-                            setAdminPhotoUrl(admin.photoUrl || '');
-                            setActiveTab('admins');
-                            window.scrollTo({ top: 0, behavior: 'smooth' });
-                          }}
-                          className="w-10 h-10 rounded-xl glass flex items-center justify-center text-blue-400 hover:bg-blue-500 hover:text-white transition-all"
-                        >
-                          <Edit2 size={16} />
-                        </button>
-                        <div className="relative">
-                          <button 
-                            onClick={() => {
-                              if (deleteConfirmId === admin.id) {
-                                onDeleteAdmin(admin.id);
-                                setDeleteConfirmId(null);
-                              } else {
-                                setDeleteConfirmId(admin.id);
-                                setTimeout(() => setDeleteConfirmId(null), 3000);
-                              }
-                            }}
-                            className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${deleteConfirmId === admin.id ? 'bg-red-500 text-white' : 'glass text-red-400 hover:bg-red-500 hover:text-white'}`}
-                          >
-                            {deleteConfirmId === admin.id ? <Check size={16} /> : <Trash2 size={16} />}
-                          </button>
-                          {deleteConfirmId === admin.id && (
-                            <div className="absolute bottom-full right-0 mb-2 bg-red-500 text-white text-[8px] font-black uppercase tracking-widest py-1 px-2 rounded whitespace-nowrap animate-bounce">
-                              Confirmar?
-                            </div>
-                          )}
-                        </div>
-                      </div>
+                  <div className="glass overflow-hidden rounded-[32px]">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className="border-b border-white/5 bg-white/5">
+                            <th className="p-6 text-[10px] font-black uppercase tracking-widest text-white/40">Usuário</th>
+                            <th className="p-6 text-[10px] font-black uppercase tracking-widest text-white/40">Nível</th>
+                            <th className="p-6 text-[10px] font-black uppercase tracking-widest text-white/40">Status</th>
+                            <th className="p-6 text-[10px] font-black uppercase tracking-widest text-white/40 text-right">Ações</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/5">
+                          {admins.map((admin) => (
+                            <tr key={admin.id} className={`hover:bg-white/[0.02] transition-colors ${!admin.isActive ? 'opacity-50' : ''}`}>
+                              <td className="p-6">
+                                <div className="flex items-center gap-4">
+                                  <div className="w-12 h-12 rounded-xl bg-white/5 flex items-center justify-center overflow-hidden shrink-0">
+                                    {admin.photoUrl ? (
+                                      <img src={admin.photoUrl} alt={admin.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                    ) : (
+                                      <span className="text-lg font-bold text-white/20">{admin.name.charAt(0)}</span>
+                                    )}
+                                  </div>
+                                  <div>
+                                    <h4 className="text-white text-sm font-bold uppercase tracking-tight">{admin.name}</h4>
+                                    <p className="text-brand-secondary text-[8px] font-black uppercase tracking-widest mt-0.5">{admin.email}</p>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="p-6">
+                                <span className="text-[10px] font-black uppercase tracking-widest text-white/60">
+                                  {admin.role === 'admin' ? 'Administrador' : 'Coordenador'}
+                                </span>
+                              </td>
+                              <td className="p-6">
+                                <span className={`text-[8px] font-black uppercase tracking-widest px-3 py-1 rounded-full ${admin.isActive ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+                                  {admin.isActive ? 'Ativo' : 'Inativo'}
+                                </span>
+                              </td>
+                              <td className="p-6 text-right">
+                                <div className="flex items-center justify-end gap-2">
+                                  <button 
+                                    onClick={() => onUpdateAdmin(admin.id, { isActive: !admin.isActive })}
+                                    className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all ${admin.isActive ? 'bg-green-500/10 text-green-400 hover:bg-green-500 hover:text-white' : 'bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white'}`}
+                                    title={admin.isActive ? 'Desativar' : 'Ativar'}
+                                  >
+                                    {admin.isActive ? <Check size={14} /> : <X size={14} />}
+                                  </button>
+                                  <button 
+                                    onClick={() => {
+                                      setEditingAdminId(admin.id);
+                                      setAdminName(admin.name);
+                                      setAdminEmail(admin.email);
+                                      setAdminRole(admin.role || 'coordinator');
+                                      setAdminPassword(admin.password || '');
+                                      setAdminPhotoUrl(admin.photoUrl || '');
+                                      setActiveTab('admins');
+                                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                                    }}
+                                    className="w-9 h-9 rounded-xl bg-blue-500/10 text-blue-400 hover:bg-blue-500 hover:text-white transition-all flex items-center justify-center"
+                                  >
+                                    <Edit2 size={14} />
+                                  </button>
+                                  <div className="relative inline-block">
+                                    <button 
+                                      onClick={() => {
+                                        if (deleteConfirmId === admin.id) {
+                                          onDeleteAdmin(admin.id);
+                                          setDeleteConfirmId(null);
+                                        } else {
+                                          setDeleteConfirmId(admin.id);
+                                          setTimeout(() => setDeleteConfirmId(null), 3000);
+                                        }
+                                      }}
+                                      className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all ${deleteConfirmId === admin.id ? 'bg-red-500 text-white' : 'bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white'}`}
+                                    >
+                                      {deleteConfirmId === admin.id ? <Check size={14} /> : <Trash2 size={14} />}
+                                    </button>
+                                    {deleteConfirmId === admin.id && (
+                                      <div className="absolute bottom-full right-0 mb-2 bg-red-500 text-white text-[8px] font-black uppercase tracking-widest py-1 px-2 rounded whitespace-nowrap animate-bounce z-10">
+                                        Confirmar?
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
-                  ))
+                  </div>
                 )}
               </div>
             </div>
@@ -2483,96 +2691,128 @@ const HeroCard = ({ queueCount, settings }: { queueCount: number, settings: AppS
 };
 
 const LotteryCountdownCard = ({ settings }: { settings: AppSettings }) => {
-  const [timeLeft, setTimeLeft] = useState<string | null>(null);
-  const [isActive, setIsActive] = useState(false);
+  const [nextDate, setNextDate] = useState<Date | null>(null);
+  const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
 
   useEffect(() => {
-    const calculateTime = () => {
-      if (!settings) return;
-      
-      const now = new Date();
-      const lotteryDays = settings.lotteryDays || [];
-      const lotteryTime = settings.lotteryTime || '11:00';
-      const [hours, minutes] = lotteryTime.split(':').map(Number);
-
-      if (lotteryDays.length === 0) {
-        setIsActive(false);
+    const calculate = () => {
+      if (!settings.lotteryEnabled || !settings.lotteryDays || !settings.lotteryDays.length || !settings.lotteryTime) {
+        setNextDate(null);
         return;
       }
 
-      // Current local date YYYY-MM-DD
-      const todayStr = now.toLocaleDateString('en-CA');
+      const [hours, minutes] = settings.lotteryTime.split(':').map(Number);
+      const now = new Date();
+      let next = new Date(now);
+      next.setHours(hours, minutes, 0, 0);
+
+      const daysOfWeek = settings.lotteryDays;
       
-      // Target for today
-      let target = new Date();
-      target.setHours(hours, minutes, 0, 0);
-
-      const alreadyHappenedToday = settings.lastLotteryDate === todayStr;
-      const timePassedToday = now.getTime() >= target.getTime();
-
-      if (alreadyHappenedToday || timePassedToday || !lotteryDays.includes(now.getDay())) {
-        // Find next day
-        let daysToAdd = 1;
-        while (daysToAdd <= 7) {
-          const checkDate = new Date();
-          checkDate.setDate(now.getDate() + daysToAdd);
-          if (lotteryDays.includes(checkDate.getDay())) {
-            target = new Date(checkDate);
-            target.setHours(hours, minutes, 0, 0);
+      // If today is a lottery day and time hasn't passed
+      if (daysOfWeek.includes(now.getDay()) && next > now) {
+        // use this next
+      } else {
+        // find next day
+        let found = false;
+        for (let i = 1; i <= 7; i++) {
+          const check = new Date(now);
+          check.setDate(now.getDate() + i);
+          check.setHours(hours, minutes, 0, 0);
+          if (daysOfWeek.includes(check.getDay())) {
+            next = check;
+            found = true;
             break;
           }
-          daysToAdd++;
+        }
+        if (!found) {
+          setNextDate(null);
+          return;
         }
       }
-
-      const diff = target.getTime() - now.getTime();
       
-      if (diff > 0 && diff <= 24 * 3600000) { // Show if within 24 hours
-        setIsActive(true);
-        const h = Math.floor(diff / 3600000);
-        const m = Math.floor((diff % 3600000) / 60000);
-        const s = Math.floor((diff % 60000) / 1000);
-        setTimeLeft(`${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`);
+      setNextDate(next);
+      const diff = next.getTime() - now.getTime();
+      
+      if (diff > 0) {
+        setTimeLeft({
+          days: Math.floor(diff / (1000 * 60 * 60 * 24)),
+          hours: Math.floor((diff / (1000 * 60 * 60)) % 24),
+          minutes: Math.floor((diff / 1000 / 60) % 60),
+          seconds: Math.floor((diff / 1000) % 60)
+        });
       } else {
-        setIsActive(false);
-        setTimeLeft(null);
+        setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0 });
       }
     };
 
-    calculateTime();
-    const timer = setInterval(calculateTime, 1000);
+    calculate();
+    const timer = setInterval(calculate, 1000);
     return () => clearInterval(timer);
-  }, [settings]);
+  }, [settings.lotteryEnabled, settings.lotteryDays, settings.lotteryTime]);
 
-  if (!isActive || !timeLeft) return null;
+  if (!settings.lotteryEnabled || !nextDate) return null;
 
   return (
-    <motion.div
-      initial={{ opacity: 0, scale: 0.95 }}
-      animate={{ opacity: 1, scale: 1 }}
-      className="mx-6 mt-6 p-6 rounded-[32px] bg-brand-primary/10 border border-brand-primary/20 flex items-center justify-between overflow-hidden relative group"
+    <motion.div 
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="px-4 md:px-6"
     >
-      <div className="relative z-10 flex items-center gap-4">
-        <div className="w-12 h-12 rounded-2xl bg-brand-primary flex items-center justify-center text-white shadow-lg shadow-brand-primary/20 group-hover:scale-110 transition-transform duration-500">
-          <Zap size={24} className="fill-current" />
-        </div>
-        <div>
-          <h4 className="text-white font-bold uppercase tracking-tight text-sm">Sorteio Automático</h4>
-          <p className="text-brand-primary text-[10px] font-black uppercase tracking-widest">A fila será reorganizada em breve</p>
-        </div>
-      </div>
-      
-      <div className="relative z-10 text-right">
-        <div className="flex items-center gap-2 justify-end text-brand-primary mb-1">
-          <Timer size={12} />
-          <span className="text-[8px] font-black uppercase tracking-widest">Contagem Regressiva</span>
-        </div>
-        <div className="text-3xl md:text-4xl font-black text-white tracking-tighter tabular-nums leading-none">
-          {timeLeft}
-        </div>
-      </div>
+      <div className="glass p-6 md:p-10 rounded-[40px] relative overflow-hidden group border border-brand-primary/10 bg-brand-primary/[0.02]">
+        <div className="absolute top-0 right-0 w-32 h-32 bg-brand-primary/5 blur-3xl rounded-full -mr-16 -mt-16" />
+        
+        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-8">
+          <div className="space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-brand-primary/10 flex items-center justify-center text-brand-primary">
+                <Timer size={20} />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold uppercase tracking-tight text-white leading-none">Sorteio Programado</h3>
+                <p className="text-brand-primary/60 text-[10px] font-black uppercase tracking-widest mt-1">Contagem regressiva</p>
+              </div>
+            </div>
+            
+            <div className="space-y-1">
+              <p className="text-white/40 text-[10px] font-black uppercase tracking-widest">Data do Próximo Sorteio</p>
+              <p className="text-white font-bold text-sm md:text-base capitalize">
+                {nextDate.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })} <span className="text-brand-primary">às {settings.lotteryTime}</span>
+              </p>
+            </div>
 
-      <div className="absolute -bottom-12 -right-12 w-48 h-48 bg-brand-primary/10 rounded-full blur-3xl group-hover:bg-brand-primary/20 transition-colors duration-700" />
+            {settings.lotteryEnabledBy && (
+              <div className="flex items-center gap-2 pt-1">
+                <div className="w-5 h-5 rounded-full bg-white/5 flex items-center justify-center">
+                  <UserIcon size={10} className="text-white/30" />
+                </div>
+                <p className="text-[10px] text-white/30 font-medium uppercase tracking-wider">
+                  Configurado por <span className="text-white/60 font-black">{settings.lotteryEnabledBy}</span>
+                </p>
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center justify-center">
+            <div className="flex items-center gap-2 md:gap-4">
+              {[
+                { label: 'Dias', value: timeLeft.days },
+                { label: 'Hrs', value: timeLeft.hours },
+                { label: 'Min', value: timeLeft.minutes },
+                { label: 'Seg', value: timeLeft.seconds }
+              ].map((item, i) => (
+                <div key={i} className="flex flex-col items-center gap-1.5 min-w-[50px] md:min-w-[64px]">
+                  <div className="w-full aspect-square md:w-16 md:h-20 rounded-2xl bg-brand-card/80 border border-white/5 backdrop-blur-md flex items-center justify-center shadow-xl">
+                    <span className="text-xl md:text-3xl font-black text-white font-mono leading-none">
+                      {String(item.value).padStart(2, '0')}
+                    </span>
+                  </div>
+                  <span className="text-[7px] md:text-[8px] font-black text-white/30 uppercase tracking-[0.2em]">{item.label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
     </motion.div>
   );
 };
@@ -2586,7 +2826,6 @@ const QueueItem = React.forwardRef<HTMLDivElement, {
   ({ employee, isFirst, isAdmin, onCall }, ref) => (
     <motion.div 
       ref={ref}
-      layout
       initial={{ opacity: 0, x: -20 }}
       animate={{ opacity: 1, x: 0 }}
       className={`group flex items-center justify-between p-5 md:p-6 rounded-[32px] transition-all duration-500 ${
@@ -2696,6 +2935,20 @@ function AppContent() {
   const [currentUserRole, setCurrentUserRole] = useState<'admin' | 'coordinator' | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [notifications, setNotifications] = useState<{ id: string, message: string, type: 'success' | 'error' | 'info', description?: string }[]>([]);
+  const [queue, setQueue] = useState<Employee[]>([]);
+  const [history, setHistory] = useState<LotteryHistory[]>([]);
+  const [fileHistory, setFileHistory] = useState<FileHistory[]>([]);
+  const [isProcessingShuffle, setIsProcessingShuffle] = useState(false);
+  const [admins, setAdmins] = useState<AdminUser[]>([]);
+  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+  const [isAuthReady, setIsAuthReady] = useState(false);
+  const [isLoadingQueue, setIsLoadingQueue] = useState(true);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(true);
+  const [isLoadingFileHistory, setIsLoadingFileHistory] = useState(true);
+  const [isLoadingAdmins, setIsLoadingAdmins] = useState(true);
+  const [isLoadingSettings, setIsLoadingSettings] = useState(true);
+  const [lastLotteryEffect, setLastLotteryEffect] = useState<string | null>(null);
+  const [currentAdminName, setCurrentAdminName] = useState('');
 
   const addNotification = (message: string, type: 'success' | 'error' | 'info' = 'info', description?: string) => {
     const id = Math.random().toString(36).substr(2, 9);
@@ -2706,17 +2959,38 @@ function AppContent() {
     }, duration);
   };
 
-  const [queue, setQueue] = useState<Employee[]>([]);
-  const [history, setHistory] = useState<LotteryHistory[]>([]);
-  const [fileHistory, setFileHistory] = useState<FileHistory[]>([]);
-  const [admins, setAdmins] = useState<AdminUser[]>([]);
-  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
-  const [isAuthReady, setIsAuthReady] = useState(false);
-  const [isLoadingQueue, setIsLoadingQueue] = useState(true);
-  const [isLoadingHistory, setIsLoadingHistory] = useState(true);
-  const [isLoadingFileHistory, setIsLoadingFileHistory] = useState(true);
-  const [isLoadingAdmins, setIsLoadingAdmins] = useState(true);
-  const [isLoadingSettings, setIsLoadingSettings] = useState(true);
+  // Confetti trigger
+  useEffect(() => {
+    if (settings.lastLotteryTimestamp && settings.lastLotteryTimestamp !== lastLotteryEffect) {
+      setLastLotteryEffect(settings.lastLotteryTimestamp);
+      
+      // Trigger confetti celebration
+      const duration = 5 * 1000;
+      const animationEnd = Date.now() + duration;
+      const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 9999 };
+
+      const randomInRange = (min: number, max: number) => Math.random() * (max - min) + min;
+
+      const interval: any = setInterval(function() {
+        const timeLeft = animationEnd - Date.now();
+
+        if (timeLeft <= 0) {
+          return clearInterval(interval);
+        }
+
+        const particleCount = 50 * (timeLeft / duration);
+        try {
+          confetti({ ...defaults, particleCount, origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 } });
+          confetti({ ...defaults, particleCount, origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 } });
+        } catch (confettiError) {
+          console.error('Confetti error:', confettiError);
+        }
+      }, 250);
+      
+      // Add notification for everyone
+      addNotification(`Sorteio Realizado! Nova ordem de serviço gerada.`, 'success');
+    }
+  }, [settings.lastLotteryTimestamp, lastLotteryEffect]);
 
   // Auth Listener
   useEffect(() => {
@@ -2734,6 +3008,8 @@ function AppContent() {
       if (user) {
         if (isAdminUser) {
           setIsAuthenticated(true);
+          const adminName = dynamicAdmin?.name || user.displayName || user.email?.split('@')[0] || 'Admin';
+          setCurrentAdminName(adminName);
           if (isHardcodedAdmin) {
             setCurrentUserRole('admin');
           } else {
@@ -2743,6 +3019,16 @@ function AppContent() {
           setIsAuthReady(true);
           clearTimeout(timeout);
         } else if (!isLoadingAdmins) {
+          // If admins list is empty, it might have been loaded without permissions before user signed in.
+          // Or it could be a stale empty list from a previous guest session.
+          // Let's ensure we have tried to fetch the list whileauthenticated.
+          if (admins.length === 0) {
+            // By setting this to true, we give the Sync Admins effect time 
+            // to fetch the list now that auth.currentUser is populated.
+            setIsLoadingAdmins(true);
+            return;
+          }
+
           // Only sign out if we are SURE they are not an admin (list loaded and they are not in it)
           setIsAuthenticated(false);
           setCurrentUserRole(null);
@@ -2854,7 +3140,7 @@ function AppContent() {
     setIsLoadingSettings(true);
     const unsubscribe = onSnapshot(doc(db, 'settings', 'global'), (snapshot) => {
       if (snapshot.exists()) {
-        setSettings(snapshot.data() as AppSettings);
+        setSettings({ ...DEFAULT_SETTINGS, ...snapshot.data() } as AppSettings);
       } else {
         // If settings don't exist in Firestore, we use DEFAULT_SETTINGS (already set as initial state)
         // We only attempt to initialize the document if the user is the authorized admin
@@ -2893,17 +3179,18 @@ function AppContent() {
       const targetTime = settings.lotteryTime || '11:00';
 
       if (
+        settings.lotteryEnabled &&
         (settings.lotteryDays || []).includes(currentDay) &&
         currentTime === targetTime &&
         settings.lastLotteryDate !== todayStr &&
         queue.filter(e => e.isActive).length >= 2
       ) {
         console.log('Triggering automatic lottery at', currentTime);
-        await handleShuffle();
+        await handleShuffle('automatic');
       }
     };
 
-    const interval = setInterval(checkLottery, 30000);
+    const interval = setInterval(checkLottery, 10000);
     return () => clearInterval(interval);
   }, [settings, queue, admins, auth.currentUser]);
 
@@ -2954,11 +3241,17 @@ function AppContent() {
 
   const updateEmployee = async (id: string, name: string, photoUrl?: string) => {
     try {
+      console.log('Updating employee:', { id, name, photoUrl });
       const updates: any = { name };
       if (photoUrl !== undefined) updates.photoUrl = photoUrl || "";
-      await updateDoc(doc(db, 'queue', id), updates);
+      
+      const docRef = doc(db, 'queue', id);
+      await updateDoc(docRef, updates);
+      
       addNotification(`${name} atualizado com sucesso!`, 'success');
+      console.log('Employee updated successfully');
     } catch (err) {
+      console.error('Error updating employee:', err);
       const errMsg = err instanceof Error ? err.message : String(err);
       addNotification('Erro ao atualizar funcionário.', 'error', errMsg);
       handleFirestoreError(err, OperationType.UPDATE, `queue/${id}`);
@@ -3013,34 +3306,90 @@ function AppContent() {
     }
   };
 
-  const handleShuffle = async () => {
-    console.log('Iniciando handleShuffle. Queue size:', queue.length);
+  const handleResetQueue = async () => {
+    try {
+      addNotification('Limpando fila...', 'info');
+      
+      // Process in batches of 400 to avoid 500 limit
+      const chunks = [];
+      for (let i = 0; i < queue.length; i += 400) {
+        chunks.push(queue.slice(i, i + 400));
+      }
+
+      for (const chunk of chunks) {
+        const batch = writeBatch(db);
+        chunk.forEach(emp => {
+          batch.update(doc(db, 'queue', emp.id), { 
+            position: 0, 
+            isActive: false 
+          });
+        });
+        await batch.commit();
+      }
+
+      // Reset settings related to the queue
+      await updateSettings({
+        ...settings,
+        currentCallPosition: 1,
+        endOfRoundPosition: 0
+      });
+
+      addNotification('Fila limpa com sucesso! Os funcionários continuam cadastrados.', 'success');
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      addNotification('Erro ao limpar fila.', 'error', errMsg);
+      handleFirestoreError(err, OperationType.WRITE, 'queue/reset');
+    }
+  };
+
+  const [isShufflingGlobal, setIsShufflingGlobal] = useState(false);
+  const [shuffleDisplayGlobal, setShuffleDisplayGlobal] = useState<Employee | null>(null);
+
+  const handleShuffle = async (type: 'manual' | 'automatic' = 'manual') => {
+    if (isProcessingShuffle) return false;
+    
+    console.log(`Iniciando handleShuffle (${type}). Queue size:`, queue.length);
     const activeEmployees = queue.filter(emp => emp.isActive);
-    console.log('Active employees:', activeEmployees.length);
     
     if (activeEmployees.length < 2) {
-      addNotification('É necessário pelo menos 2 funcionários ativos para o sorteio.', 'error');
+      if (type === 'manual') {
+        addNotification('É necessário pelo menos 2 funcionários ativos para o sorteio.', 'error');
+      }
       return false;
     }
 
-    addNotification('Iniciando sorteio...', 'info');
+    setIsProcessingShuffle(true);
+    setIsShufflingGlobal(true);
+    
+    // Virtual visual shuffle for the admin who triggers it
+    let iterations = 0;
+    const maxIterations = 15;
+    const interval = setInterval(() => {
+      const randomIndex = Math.floor(Math.random() * activeEmployees.length);
+      setShuffleDisplayGlobal(activeEmployees[randomIndex]);
+      iterations++;
+    }, 100);
 
-    // Fisher-Yates Shuffle for better randomness
-    const shuffled = [...activeEmployees];
-    for (let i = shuffled.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    if (type === 'manual') {
+      addNotification('Iniciando sorteio...', 'info');
+    } else {
+      console.log('Sorteio automático disparado!');
     }
 
-    const winner = shuffled[0];
-    
-    // Update positions for ALL employees (active first, then inactive)
-    const inactiveEmployees = queue.filter(emp => !emp.isActive);
-    const fullNewOrder = [...shuffled, ...inactiveEmployees];
-    console.log('Full new order size:', fullNewOrder.length);
-
     try {
-      // Process in batches of 400 to stay safe under 500 limit
+      // Fisher-Yates Shuffle for better randomness
+      const shuffled = [...activeEmployees];
+      for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+      }
+
+      const winner = shuffled[0];
+      
+      // Update positions for ALL employees (active first, then inactive)
+      const inactiveEmployees = queue.filter(emp => !emp.isActive);
+      const fullNewOrder = [...shuffled, ...inactiveEmployees];
+
       const chunks = [];
       for (let i = 0; i < fullNewOrder.length; i += 400) {
         chunks.push(fullNewOrder.slice(i, i + 400));
@@ -3056,16 +3405,16 @@ function AppContent() {
         await batch.commit();
       }
 
-      // Add to history (separate batch/write)
       const historyId = Math.random().toString(36).substr(2, 9);
       const now = new Date();
-      const todayStr = now.toLocaleDateString('en-CA'); // YYYY-MM-DD
+      const todayStr = now.toLocaleDateString('en-CA');
       
       const historyEntry: LotteryHistory = {
         id: historyId,
         timestamp: now.toISOString(),
         winnerName: winner.name,
         winnerId: winner.id,
+        type: type,
         fullList: shuffled.map(emp => ({ 
           id: emp.id, 
           name: emp.name, 
@@ -3075,24 +3424,35 @@ function AppContent() {
 
       await setDoc(doc(db, 'history', historyId), historyEntry);
       
-      // Update last lottery date in settings
-      const firstActive = shuffled[0];
-      await updateSettings({ 
+      const updateData = {
         ...settings, 
         lastLotteryDate: todayStr,
+        lastLotteryTimestamp: now.toISOString(),
         endOfRoundPosition: activeEmployees.length,
         currentCallPosition: 1
-      });
+      } as AppSettings;
 
-      console.log('Sorteio concluído com sucesso. Vencedor:', winner.name);
-      addNotification(`Sorteio realizado! Vencedor: ${winner.name}`, 'success');
+      await setDoc(doc(db, 'settings', 'global'), updateData);
+
+      clearInterval(interval);
+      setTimeout(() => {
+        setIsShufflingGlobal(false);
+        setShuffleDisplayGlobal(null);
+      }, 1000);
+
+      addNotification(`Sorteio ${type === 'automatic' ? 'automático ' : ''}realizado! Vencedor: ${winner.name}`, 'success');
       return true;
     } catch (err) {
+      clearInterval(interval);
+      setIsShufflingGlobal(false);
+      setShuffleDisplayGlobal(null);
       console.error('Erro fatal no handleShuffle:', err);
       const errMsg = err instanceof Error ? err.message : String(err);
       addNotification('Erro ao realizar sorteio.', 'error', errMsg);
       handleFirestoreError(err, OperationType.WRITE, 'queue/shuffle');
       return false;
+    } finally {
+      setIsProcessingShuffle(false);
     }
   };
 
@@ -3150,15 +3510,40 @@ function AppContent() {
         await createAuthUser(secondaryAuth, email, password);
         await signOut(secondaryAuth);
       } catch (authErr: any) {
-        // If email already in use, it's fine, maybe they were added before or have an account
-        if (authErr.code !== 'auth/email-already-in-use') {
-          console.error("Auth Creation Error:", authErr);
-          addNotification('Erro ao criar conta de acesso.', 'error', authErr.message);
-          // If it's a critical auth error (like weak password), we should probably stop
-          if (authErr.code === 'auth/weak-password' || authErr.code === 'auth/invalid-email') {
-            await deleteApp(secondaryApp);
-            return;
-          }
+        console.error("Auth Creation Error:", authErr);
+        
+        // Define user-friendly messages for common Firebase Auth errors
+        let errorTitle = 'Erro ao criar conta de acesso';
+        let errorMessage = 'Ocorreu um erro inesperado ao configurar as credenciais.';
+        let isCritical = true;
+
+        switch (authErr.code) {
+          case 'auth/email-already-in-use':
+            // This is not strictly an error if we are just adding them to the admins collection
+            // but we should still notify the user for clarity.
+            errorTitle = 'Conta identificada';
+            errorMessage = 'Este email já possui uma conta no sistema. O acesso administrativo será vinculado a ela.';
+            isCritical = false;
+            break;
+          case 'auth/weak-password':
+            errorMessage = 'A senha escolhida é muito fraca. Escolha uma senha mais segura (mínimo 6 caracteres).';
+            break;
+          case 'auth/invalid-email':
+            errorMessage = 'O formato do email fornecido é inválido.';
+            break;
+          case 'auth/operation-not-allowed':
+            errorMessage = 'O login com email/senha não está habilitado no Firebase Console.';
+            break;
+          default:
+            errorMessage = authErr.message || errorMessage;
+        }
+
+        if (isCritical) {
+          addNotification(errorTitle, 'error', errorMessage);
+          await deleteApp(secondaryApp);
+          return;
+        } else {
+          addNotification(errorTitle, 'info', errorMessage);
         }
       } finally {
         try {
@@ -3269,16 +3654,30 @@ function AppContent() {
 
   const setQueueBulk = async (newQueue: Employee[]) => {
     try {
-      const batch = writeBatch(db);
-      // Delete old
-      queue.forEach(emp => {
-        batch.delete(doc(db, 'queue', emp.id));
-      });
-      // Add new
-      newQueue.forEach(emp => {
-        batch.set(doc(db, 'queue', emp.id), emp);
-      });
-      await batch.commit();
+      addNotification('Atualizando banco de dados...', 'info');
+      
+      // Combine all operations (deletes + sets)
+      const operations: { type: 'delete' | 'set', emp: Employee }[] = [
+        ...queue.map(emp => ({ type: 'delete' as const, emp })),
+        ...newQueue.map(emp => ({ type: 'set' as const, emp }))
+      ];
+
+      // Process in batches of 400
+      for (let i = 0; i < operations.length; i += 400) {
+        const chunk = operations.slice(i, i + 400);
+        const batch = writeBatch(db);
+        
+        chunk.forEach(op => {
+          if (op.type === 'delete') {
+            batch.delete(doc(db, 'queue', op.emp.id));
+          } else {
+            batch.set(doc(db, 'queue', op.emp.id), op.emp);
+          }
+        });
+        
+        await batch.commit();
+      }
+
       addNotification('Banco de dados atualizado com sucesso!', 'success');
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
@@ -3345,6 +3744,9 @@ function AppContent() {
           settings={settings}
           onUpdateSettings={updateSettings}
           onShuffle={handleShuffle}
+          currentAdminName={currentAdminName}
+          isShuffling={isShufflingGlobal}
+          shuffleDisplay={shuffleDisplayGlobal}
           onSetQueue={setQueueBulk}
           onUpdateEmployee={updateEmployee}
           onDeleteHistoryItem={deleteHistoryItem}
@@ -3362,6 +3764,7 @@ function AppContent() {
           onDeleteFileHistoryItem={deleteFileHistoryItem}
           onClearFileHistory={clearFileHistory}
           onAddFileHistory={addFileHistory}
+          onResetQueue={handleResetQueue}
           isLoadingFileHistory={isLoadingFileHistory}
           isLoadingAdmins={isLoadingAdmins}
           isLoadingSettings={isLoadingSettings}
@@ -3380,8 +3783,10 @@ function AppContent() {
           <main className="max-w-3xl mx-auto space-y-12">
             <div className="space-y-0">
               <HeroCard queueCount={queue.length} settings={settings} />
-              <LotteryCountdownCard settings={settings} />
             </div>
+
+            <LotteryCountdownCard settings={settings} />
+
             
             <section className="px-4 md:px-6 space-y-8">
               <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6">
@@ -3412,7 +3817,7 @@ function AppContent() {
               </div>
               
               <div className="space-y-4">
-                <AnimatePresence mode="popLayout">
+                <AnimatePresence mode="wait">
                   {isLoadingQueue ? (
                     <SkeletonQueue />
                   ) : (

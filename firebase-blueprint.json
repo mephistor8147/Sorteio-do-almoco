@@ -39,6 +39,8 @@
         "heroDescription": { "type": "string" },
         "lotteryTime": { "type": "string", "format": "time" },
         "lotteryDays": { "type": "array", "items": { "type": "number" } },
+        "lotteryEnabled": { "type": "boolean" },
+        "lotteryEnabledBy": { "type": "string" },
         "lastLotteryDate": { "type": "string", "format": "date-time" },
         "headerTitleLine1": { "type": "string" },
         "headerTitleLine2": { "type": "string" },
@@ -49,7 +51,7 @@
         "endOfRoundPosition": { "type": "number" },
         "currentCallPosition": { "type": "number" }
       },
-      "required": ["heroTitleLine1", "heroTitleLine2", "heroSubtitle", "heroDescription", "lotteryTime", "lotteryDays", "headerTitleLine1", "headerTitleLine2", "headerSubtitle", "queueTitleLine1", "queueTitleLine2", "queueSubtitle"]
+      "required": ["heroTitleLine1", "heroTitleLine2", "heroSubtitle", "heroDescription", "lotteryTime", "lotteryDays", "lotteryEnabled", "headerTitleLine1", "headerTitleLine2", "headerSubtitle", "queueTitleLine1", "queueTitleLine2", "queueSubtitle"]
     },
     "LotteryHistory": {
       "title": "LotteryHistory",
