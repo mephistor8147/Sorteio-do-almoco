@@ -156,6 +156,8 @@ const DEFAULT_SETTINGS: AppSettings = {
 
 const ADMIN_EMAILS = ['l2xbrasil@gmail.com', 'sorteioadm@sorteio.com'];
 
+const INACTIVITY_TIMEOUT = 15 * 60 * 1000; // 15 minutos
+
 // --- Error Boundary ---
 class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean }> {
   constructor(props: { children: React.ReactNode }) {
@@ -867,6 +869,11 @@ const AdminPanel = ({
 
   const [expandedHistory, setExpandedHistory] = useState<string | null>(null);
   const [tempSettings, setTempSettings] = useState<AppSettings>(settings);
+  
+  // Sync tempSettings with settings prop when it changes
+  useEffect(() => {
+    setTempSettings(settings);
+  }, [settings]);
   const [dbStatus, setDbStatus] = useState<{ type: 'success' | 'error', message: string } | null>(null);
 
   useEffect(() => {
@@ -2961,6 +2968,7 @@ function AppContent() {
 
   // Confetti trigger
   useEffect(() => {
+    let interval: any;
     if (settings.lastLotteryTimestamp && settings.lastLotteryTimestamp !== lastLotteryEffect) {
       setLastLotteryEffect(settings.lastLotteryTimestamp);
       
@@ -2971,17 +2979,20 @@ function AppContent() {
 
       const randomInRange = (min: number, max: number) => Math.random() * (max - min) + min;
 
-      const interval: any = setInterval(function() {
+      interval = setInterval(function() {
         const timeLeft = animationEnd - Date.now();
 
         if (timeLeft <= 0) {
-          return clearInterval(interval);
+          clearInterval(interval);
+          return;
         }
 
         const particleCount = 50 * (timeLeft / duration);
         try {
-          confetti({ ...defaults, particleCount, origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 } });
-          confetti({ ...defaults, particleCount, origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 } });
+          if (typeof confetti === 'function') {
+            confetti({ ...defaults, particleCount, origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 } });
+            confetti({ ...defaults, particleCount, origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 } });
+          }
         } catch (confettiError) {
           console.error('Confetti error:', confettiError);
         }
@@ -2990,6 +3001,9 @@ function AppContent() {
       // Add notification for everyone
       addNotification(`Sorteio Realizado! Nova ordem de serviço gerada.`, 'success');
     }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
   }, [settings.lastLotteryTimestamp, lastLotteryEffect]);
 
   // Auth Listener
@@ -3193,6 +3207,41 @@ function AppContent() {
     const interval = setInterval(checkLottery, 10000);
     return () => clearInterval(interval);
   }, [settings, queue, admins, auth.currentUser]);
+
+  // Auto Logout for Inactivity
+  useEffect(() => {
+    if (!isAuthenticated || view !== 'admin') return;
+
+    let timeoutId: any;
+
+    const resetTimer = () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        handleLogout();
+        addNotification('Sessão encerrada por inatividade para sua segurança.', 'info');
+      }, INACTIVITY_TIMEOUT);
+    };
+
+    const handleActivity = () => {
+      resetTimer();
+    };
+
+    const activityEvents = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
+    
+    activityEvents.forEach(event => {
+      window.addEventListener(event, handleActivity);
+    });
+
+    // Start timer on mount/auth
+    resetTimer();
+
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      activityEvents.forEach(event => {
+        window.removeEventListener(event, handleActivity);
+      });
+    };
+  }, [isAuthenticated, view]);
 
   const handleLogin = () => {
     // When handleLogin is called, we are likely in the middle of a login transition.
