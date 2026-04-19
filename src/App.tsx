@@ -32,7 +32,8 @@ import {
   Link as LinkIcon,
   ExternalLink,
   Printer,
-  FileDown
+  FileDown,
+  Volume2
 } from 'lucide-react';
 import html2pdf from 'html2pdf.js';
 import * as XLSX from 'xlsx';
@@ -99,6 +100,7 @@ interface AppSettings {
   downloadFileName?: string;
   endOfRoundPosition?: number;
   currentCallPosition?: number;
+  voiceCallEnabled?: boolean;
 }
 
 interface LotteryHistory {
@@ -151,7 +153,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   queueSubtitle: 'Ordem de Prioridade',
   downloadUrl: '',
   downloadFileName: '',
-  currentCallPosition: 1
+  currentCallPosition: 1,
+  voiceCallEnabled: false
 };
 
 const ADMIN_EMAILS = ['l2xbrasil@gmail.com', 'sorteioadm@sorteio.com'];
@@ -538,6 +541,25 @@ const AdminPanel = ({
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
 
+  const speak = (text: string) => {
+    if (!settings.voiceCallEnabled) return;
+    
+    try {
+      // Cancelar qualquer fala em andamento
+      window.speechSynthesis.cancel();
+      
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'pt-BR';
+      utterance.rate = 0.9; // Um pouco mais lento para ficar claro
+      utterance.pitch = 1;
+      utterance.volume = 1;
+      
+      window.speechSynthesis.speak(utterance);
+    } catch (err) {
+      console.error('Erro ao falar:', err);
+    }
+  };
+
   const handleCallNext = async () => {
     const activeQueue = [...queue].filter(e => e.isActive).sort((a, b) => a.position - b.position);
     if (activeQueue.length === 0) return;
@@ -555,6 +577,11 @@ const AdminPanel = ({
         ...settings,
         currentCallPosition: nextInQueue.position
       });
+      
+      if (settings.voiceCallEnabled) {
+        speak(`Próximo funcionário: ${nextInQueue.name}`);
+      }
+
       addNotification('Próximo funcionário chamado!', 'success');
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, 'settings/global');
@@ -1198,6 +1225,21 @@ const AdminPanel = ({
               <div className="glass p-6 md:p-8 rounded-[32px] md:rounded-[40px] space-y-4">
                 <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-brand-secondary">Ações Rápidas</h3>
                 <div className="grid grid-cols-1 gap-3">
+                  <button 
+                    onClick={() => {
+                      onUpdateSettings({ ...settings, voiceCallEnabled: !settings.voiceCallEnabled });
+                    }}
+                    className={`w-full flex items-center gap-3 p-4 rounded-2xl transition-all text-left group ${settings.voiceCallEnabled ? 'bg-brand-primary/20 border border-brand-primary/20' : 'bg-white/5 border border-white/5'}`}
+                  >
+                    <Volume2 size={18} className={settings.voiceCallEnabled ? 'text-brand-primary' : 'text-white/40'} />
+                    <div className="flex flex-col">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-white/70">Chamada por Voz</span>
+                      <span className="text-[8px] text-white/20 uppercase font-medium">
+                        {settings.voiceCallEnabled ? 'Ativado - Anuncia nomes ao chamar' : 'Desativado - Sem aviso sonoro'}
+                      </span>
+                    </div>
+                  </button>
+
                   <button 
                     onClick={() => {
                       onResetQueue();
