@@ -33,7 +33,8 @@ import {
   ExternalLink,
   Printer,
   FileDown,
-  Volume2
+  Volume2,
+  Share2
 } from 'lucide-react';
 import html2pdf from 'html2pdf.js';
 import * as XLSX from 'xlsx';
@@ -101,6 +102,8 @@ interface AppSettings {
   endOfRoundPosition?: number;
   currentCallPosition?: number;
   voiceCallEnabled?: boolean;
+  lastCalledEmployeeId?: string | null;
+  lastCalledTimestamp?: string | null;
 }
 
 interface LotteryHistory {
@@ -154,7 +157,9 @@ const DEFAULT_SETTINGS: AppSettings = {
   downloadUrl: '',
   downloadFileName: '',
   currentCallPosition: 1,
-  voiceCallEnabled: false
+  voiceCallEnabled: false,
+  lastCalledEmployeeId: null,
+  lastCalledTimestamp: null
 };
 
 const ADMIN_EMAILS = ['l2xbrasil@gmail.com', 'sorteioadm@sorteio.com'];
@@ -266,6 +271,84 @@ const SkeletonSettings = () => (
 );
 
 // --- Components ---
+
+const CallNotificationPopup = ({ employee, onClose }: { employee: Employee, onClose: () => void }) => {
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.8, y: 50 }}
+      animate={{ opacity: 1, scale: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.8, y: 50 }}
+      className="fixed inset-0 z-[300] flex items-center justify-center px-4 pointer-events-none"
+    >
+      <motion.div 
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="absolute inset-0 bg-brand-bg/60 backdrop-blur-sm pointer-events-auto"
+        onClick={onClose}
+      />
+      <div className="w-full max-w-sm glass p-8 rounded-[48px] shadow-[0_32px_64px_-16px_rgba(0,0,0,0.5)] border border-white/20 flex flex-col items-center gap-6 relative pointer-events-auto bg-brand-bg/95 backdrop-blur-2xl overflow-hidden group">
+        <div className="absolute top-0 left-0 w-full h-1.5 bg-brand-secondary/20 overflow-hidden">
+          <motion.div 
+            initial={{ width: '0%' }}
+            animate={{ width: '100%' }}
+            transition={{ duration: 8, ease: 'linear' }}
+            className="h-full bg-brand-secondary"
+          />
+        </div>
+
+        <button 
+          onClick={onClose}
+          className="absolute top-6 right-6 text-white/30 hover:text-white transition-colors"
+        >
+          <X size={20} />
+        </button>
+
+        <div className="space-y-1 text-center mb-2">
+          <span className="text-brand-secondary text-[10px] font-black uppercase tracking-[0.4em] block">Chamando Agora</span>
+          <h2 className="text-2xl font-black text-white uppercase tracking-tight">Próximo na Fila</h2>
+        </div>
+
+        <div className="relative">
+          <div className="w-32 h-32 rounded-[40px] overflow-hidden border-4 border-brand-primary shadow-2xl relative z-10 bg-white/5">
+            {employee.photoUrl ? (
+              <img src={employee.photoUrl} alt={employee.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center bg-brand-primary/10 text-brand-primary">
+                <UserIcon size={48} />
+              </div>
+            )}
+          </div>
+          <motion.div 
+            animate={{ scale: [1, 1.2, 1] }}
+            transition={{ duration: 2, repeat: Infinity }}
+            className="absolute -top-4 -right-4 w-12 h-12 bg-white text-brand-bg rounded-2xl flex items-center justify-center font-black text-lg shadow-xl z-20 border-2 border-brand-primary"
+          >
+            {employee.position}º
+          </motion.div>
+          <div className="absolute inset-0 bg-brand-primary/20 blur-3xl rounded-full scale-150 opacity-50" />
+        </div>
+
+        <div className="text-center space-y-2">
+          <h3 className="text-3xl font-black text-white uppercase tracking-tight line-clamp-2">
+            {employee.name}
+          </h3>
+          <div className="flex items-center justify-center gap-2 px-4 py-2 bg-white/5 rounded-2xl border border-white/5">
+            <Sparkles size={14} className="text-brand-secondary" />
+            <span className="text-[10px] font-black uppercase tracking-widest text-white/60">Prepare seu prato!</span>
+          </div>
+        </div>
+
+        <button 
+          onClick={onClose}
+          className="w-full py-5 bg-brand-primary text-white font-black uppercase tracking-[0.2em] rounded-3xl shadow-xl hover:scale-105 transition-all active:scale-95 text-xs"
+        >
+          Entendido
+        </button>
+      </div>
+    </motion.div>
+  );
+};
 
 const Header = ({ onAdminClick, isAuthenticated, settings }: { onAdminClick: () => void, isAuthenticated: boolean, settings: AppSettings }) => (
   <header className="px-4 md:px-6 py-4 md:py-8 flex items-center justify-between sticky top-0 z-50 bg-brand-bg/80 backdrop-blur-md">
@@ -561,28 +644,39 @@ const AdminPanel = ({
   };
 
   const handleCallNext = async () => {
-    const activeQueue = [...queue].filter(e => e.isActive).sort((a, b) => a.position - b.position);
-    if (activeQueue.length === 0) return;
+    const activeQueueSorted = [...queue].filter(e => e.isActive).sort((a, b) => a.position - b.position);
+    if (activeQueueSorted.length === 0) {
+      addNotification('A fila está vazia ou todos estão inativos.', 'info');
+      return;
+    }
     
     const currentPos = settings.currentCallPosition || 1;
-    const nextInQueue = activeQueue.find(e => e.position > currentPos);
+    // Encontrar o funcionário que está ATUALMENTE sendo mostrado como "Próximo"
+    const personToCall = activeQueueSorted.find(e => e.position >= currentPos);
     
-    if (!nextInQueue) {
+    if (!personToCall) {
       addNotification('Todos os funcionários já foram chamados!', 'info');
       return;
     }
     
     try {
-      await onUpdateSettings({
-        ...settings,
-        currentCallPosition: nextInQueue.position
-      });
-      
+      // 1. Falar o nome do funcionário
       if (settings.voiceCallEnabled) {
-        speak(`Próximo funcionário: ${nextInQueue.name}`);
+        speak(`Atenção: Próximo na fila, ${personToCall.name}`);
       }
 
-      addNotification('Próximo funcionário chamado!', 'success');
+      // 2. Avançar a posição para o próximo da fila
+      // Encontramos quem vem DEPOIS do personToCall para definir a nova posição
+      const nextOne = activeQueueSorted.find(e => e.position > personToCall.position);
+      
+      await onUpdateSettings({
+        ...settings,
+        currentCallPosition: nextOne ? nextOne.position : personToCall.position + 1,
+        lastCalledEmployeeId: personToCall.id,
+        lastCalledTimestamp: new Date().toISOString()
+      });
+
+      addNotification(`${personToCall.name} chamado com sucesso!`, 'success');
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, 'settings/global');
     }
@@ -792,6 +886,103 @@ const AdminPanel = ({
           document.body.removeChild(container);
         }
       }, 500);
+    }
+  };
+  
+  const handleShareHistory = async (item: LotteryHistory) => {
+    const dateStr = new Date(item.timestamp).toLocaleDateString('pt-BR');
+    const timeStr = new Date(item.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    
+    // Generate PDF content (similar to handleDownloadPDF)
+    const list = item.fullList || [];
+    const mid = Math.ceil(list.length / 2);
+    const leftCol = list.slice(0, mid);
+    const rightCol = list.slice(mid);
+
+    const container = document.createElement('div');
+    container.style.position = 'absolute';
+    container.style.left = '0';
+    container.style.top = '0';
+    container.style.opacity = '0';
+    container.style.pointerEvents = 'none';
+    container.style.width = '210mm';
+    container.style.background = 'white';
+    
+    container.innerHTML = `
+      <div style="padding: 40px; font-family: Arial, sans-serif; color: #1a1a1a;">
+        <div style="text-align: center; margin-bottom: 40px; border-bottom: 4px solid #059669; padding-bottom: 25px;">
+          <h1 style="font-size: 28px; font-weight: 900; text-transform: uppercase; color: #059669; margin-bottom: 8px;">FILA DO ALMOÇO EDIFÍCIO AMAZONAS</h1>
+          <p style="font-size: 16px; color: #4b5563; font-weight: 700; text-transform: uppercase;">DATA: ${dateStr} - ${timeStr}</p>
+        </div>
+        <div style="display: flex; gap: 60px;">
+          <div style="flex: 1;">
+            ${leftCol.map((emp, i) => `
+              <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid #e5e7eb;">
+                <span style="font-weight: 900; width: 40px; color: #059669; font-size: 14px;">${i + 1}º</span>
+                <span style="font-weight: 700; text-transform: uppercase; font-size: 12px; color: #111827;">${emp.name}</span>
+              </div>
+            `).join('')}
+          </div>
+          <div style="flex: 1;">
+            ${rightCol.map((emp, i) => `
+              <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid #e5e7eb;">
+                <span style="font-weight: 900; width: 40px; color: #059669; font-size: 14px;">${mid + i + 1}º</span>
+                <span style="font-weight: 700; text-transform: uppercase; font-size: 12px; color: #111827;">${emp.name}</span>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(container);
+
+    const opt = {
+      margin: 10,
+      image: { type: 'jpeg' as const, quality: 0.98 },
+      html2canvas: { scale: 2, useCORS: true, logging: false },
+      jsPDF: { unit: 'mm' as const, format: 'a4' as const, orientation: 'portrait' as const }
+    };
+
+    try {
+      addNotification('Preparando PDF para compartilhamento...', 'info');
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      const pdfBlob = await html2pdf().set(opt).from(container).output('blob');
+      const fileName = `fila-almoco-${dateStr.replace(/\//g, '-')}.pdf`;
+      const file = new File([pdfBlob], fileName, { type: 'application/pdf' });
+
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          files: [file],
+          title: `Fila do Almoço - ${dateStr}`,
+          text: `Resultado do Sorteio Amazonas - ${dateStr}`
+        });
+      } else if (navigator.share) {
+        // Fallback to text sharing if file sharing is not supported
+        const text = `🏆 Resultado do Sorteio - ${dateStr} às ${timeStr}\n\n` +
+          `Vencedor: ${item.winnerName}\n\n` +
+          `Confira a fila completa acessando nosso portal.`;
+          
+        await navigator.share({
+          title: `Sorteio Amazonas - ${dateStr}`,
+          text: text,
+          url: window.location.origin
+        });
+      } else {
+        const text = `🏆 Resultado do Sorteio - ${dateStr} às ${timeStr}\n\nVencedor: ${item.winnerName}\n\n${window.location.origin}`;
+        await navigator.clipboard.writeText(text);
+        addNotification('Resumo copiado. O navegador não suporta compartilhamento de arquivos.', 'success');
+      }
+    } catch (err) {
+      if ((err as Error).name !== 'AbortError') {
+        console.error('Erro ao compartilhar PDF:', err);
+        addNotification('Erro ao compartilhar PDF.', 'error');
+      }
+    } finally {
+      if (container.parentNode) {
+        document.body.removeChild(container);
+      }
     }
   };
 
@@ -1771,6 +1962,13 @@ const AdminPanel = ({
               {history.length > 0 && (
                 <div className="flex items-center gap-3">
                   <button 
+                    onClick={() => handleShareHistory(history[0])}
+                    className="px-4 py-2 rounded-xl bg-brand-primary/10 text-brand-primary text-[10px] font-black uppercase tracking-widest hover:bg-brand-primary hover:text-white transition-all flex items-center gap-2"
+                  >
+                    <Share2 size={14} />
+                    Compartilhar
+                  </button>
+                  <button 
                     onClick={() => handlePrintHistory(history[0])}
                     className="px-4 py-2 rounded-xl bg-brand-primary/10 text-brand-primary text-[10px] font-black uppercase tracking-widest hover:bg-brand-primary hover:text-white transition-all flex items-center gap-2"
                   >
@@ -1847,6 +2045,16 @@ const AdminPanel = ({
 
                       <div className="flex items-center justify-between pt-2 border-t border-white/5">
                         <div className="flex items-center gap-1.5">
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleShareHistory(item);
+                            }}
+                            className="p-2 rounded-xl bg-white/5 text-white/30 hover:bg-brand-primary hover:text-white transition-all"
+                            title="Compartilhar"
+                          >
+                            <Share2 size={14} />
+                          </button>
                           <button 
                             onClick={(e) => {
                               e.stopPropagation();
@@ -2997,7 +3205,10 @@ function AppContent() {
   const [isLoadingAdmins, setIsLoadingAdmins] = useState(true);
   const [isLoadingSettings, setIsLoadingSettings] = useState(true);
   const [lastLotteryEffect, setLastLotteryEffect] = useState<string | null>(null);
+  const [lastCallEffect, setLastCallEffect] = useState<string | null>(null);
   const [currentAdminName, setCurrentAdminName] = useState('');
+  const [calledEmployeeData, setCalledEmployeeData] = useState<Employee | null>(null);
+  const [showCallPopup, setShowCallPopup] = useState(false);
 
   const addNotification = (message: string, type: 'success' | 'error' | 'info' = 'info', description?: string) => {
     const id = Math.random().toString(36).substr(2, 9);
@@ -3047,6 +3258,21 @@ function AppContent() {
       if (interval) clearInterval(interval);
     };
   }, [settings.lastLotteryTimestamp, lastLotteryEffect]);
+
+  // Queue Call Listener
+  useEffect(() => {
+    if (settings.lastCalledTimestamp && settings.lastCalledTimestamp !== lastCallEffect && settings.lastCalledEmployeeId) {
+      setLastCallEffect(settings.lastCalledTimestamp);
+      
+      const called = queue.find(e => e.id === settings.lastCalledEmployeeId);
+      if (called) {
+        setCalledEmployeeData(called);
+        setShowCallPopup(true);
+        const timer = setTimeout(() => setShowCallPopup(false), 8000);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [settings.lastCalledTimestamp, settings.lastCalledEmployeeId, lastCallEffect, queue]);
 
   // Auth Listener
   useEffect(() => {
@@ -3796,6 +4022,15 @@ function AppContent() {
     <div className="min-h-screen pb-20">
       {view === 'login' && <Login onLogin={handleLogin} onBack={() => setView('public')} />}
       
+      <AnimatePresence>
+        {showCallPopup && calledEmployeeData && (
+          <CallNotificationPopup 
+            employee={calledEmployeeData} 
+            onClose={() => setShowCallPopup(false)} 
+          />
+        )}
+      </AnimatePresence>
+
       {/* Notifications */}
       <div className="fixed bottom-8 right-8 z-[200] space-y-3 pointer-events-none">
         <AnimatePresence>
