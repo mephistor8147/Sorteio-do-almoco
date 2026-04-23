@@ -1063,6 +1063,52 @@ const AdminPanel = ({
     }
   };
 
+  const handleDownloadXlsxHistory = (item: LotteryHistory) => {
+    try {
+      const projectName = `${settings.headerTitleLine1} ${settings.headerTitleLine2}`.trim();
+      const drawDate = new Date(item.timestamp).toLocaleDateString('pt-BR');
+      const drawTime = new Date(item.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+      
+      const headerRows = [
+        ["LOGOTIPO", "", ""],
+        ["OBRA:", projectName.toUpperCase(), ""],
+        ["DATA DO SORTEIO:", `${drawDate} ${drawTime}`, ""],
+        ["", "", ""],
+        ["N°", "NOME DO FUNCIONÁRIO", ""]
+      ];
+
+      const dataRows = item.fullList.map((emp, index) => [
+        `${index + 1}º`,
+        emp.name.toUpperCase(),
+        ""
+      ]);
+
+      const allRows = [...headerRows, ...dataRows];
+      const ws = XLSX.utils.aoa_to_sheet(allRows);
+
+      ws['!cols'] = [
+        { wch: 10 },
+        { wch: 50 },
+      ];
+
+      ws['!merges'] = [
+        { s: { r: 1, c: 1 }, e: { r: 1, c: 2 } },
+        { s: { r: 2, c: 1 }, e: { r: 2, c: 2 } }
+      ];
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Fila");
+
+      const fileName = `fila_${drawDate.replace(/\//g, '-')}_${projectName.replace(/\s+/g, '_')}.xlsx`;
+      XLSX.writeFile(wb, fileName);
+
+      addNotification('XLSX baixado com sucesso!', 'success');
+    } catch (error) {
+      console.error('Erro ao exportar XLSX:', error);
+      addNotification('Erro ao exportar Excel.', 'error');
+    }
+  };
+
   const [activeTab, setActiveTab] = useState<'queue' | 'employees' | 'settings' | 'lottery' | 'database' | 'history' | 'admins' | 'files'>('queue');
   const [linkUrl, setLinkUrl] = useState('');
   const [linkName, setLinkName] = useState('');
@@ -2099,6 +2145,13 @@ const AdminPanel = ({
                     PDF
                   </button>
                   <button 
+                    onClick={() => handleDownloadXlsxHistory(history[0])}
+                    className="px-4 py-2 rounded-xl bg-green-500/10 text-green-500 text-[10px] font-black uppercase tracking-widest hover:bg-green-500 hover:text-white transition-all flex items-center gap-2"
+                  >
+                    <Download size={14} />
+                    XLSX
+                  </button>
+                  <button 
                     onClick={() => {
                       onClearHistory();
                     }}
@@ -2190,6 +2243,16 @@ const AdminPanel = ({
                             title="PDF"
                           >
                             <FileDown size={14} />
+                          </button>
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDownloadXlsxHistory(item);
+                            }}
+                            className="p-2 rounded-xl bg-white/5 text-white/30 hover:bg-green-500 hover:text-white transition-all"
+                            title="XLSX"
+                          >
+                            <Download size={14} />
                           </button>
                           <button 
                             onClick={(e) => {
