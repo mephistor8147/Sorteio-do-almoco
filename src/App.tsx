@@ -34,7 +34,8 @@ import {
   Printer,
   FileDown,
   Volume2,
-  Share2
+  Share2,
+  RefreshCw
 } from 'lucide-react';
 import html2pdf from 'html2pdf.js';
 import * as XLSX from 'xlsx';
@@ -257,17 +258,93 @@ const SkeletonHistory = () => (
 const SkeletonSettings = () => (
   <div className="glass p-8 rounded-[40px] border border-white/5 animate-pulse space-y-8">
     <div className="space-y-4">
-      <div className="h-4 w-32 bg-white/10 rounded-full" />
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="h-12 bg-white/5 rounded-2xl" />
-        <div className="h-12 bg-white/5 rounded-2xl" />
+      <div className="h-4 w-40 bg-white/10 rounded-full" />
+      <div className="h-2 w-64 bg-white/5 rounded-full" />
+    </div>
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      {[1, 2, 3, 4].map(i => (
+        <div key={i} className="space-y-3">
+          <div className="h-2 w-16 bg-white/5 rounded-full ml-4" />
+          <div className="h-14 w-full bg-white/5 rounded-2xl" />
+        </div>
+      ))}
+    </div>
+  </div>
+);
+
+const SkeletonAdmins = () => (
+  <div className="space-y-6 animate-pulse">
+    <div className="glass p-6 md:p-8 rounded-[40px] space-y-6">
+      <div className="h-6 w-48 bg-white/10 rounded-full" />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {[1, 2, 3, 4, 5, 6].map(i => (
+          <div key={i} className="space-y-2">
+            <div className="h-2 w-16 bg-white/5 rounded-full ml-4" />
+            <div className="h-14 w-full bg-white/5 rounded-2xl" />
+          </div>
+        ))}
       </div>
     </div>
     <div className="space-y-4">
-      <div className="h-4 w-40 bg-white/10 rounded-full" />
-      <div className="h-24 bg-white/5 rounded-2xl" />
+      <div className="h-6 w-48 bg-white/10 rounded-full" />
+      <div className="glass overflow-hidden rounded-[32px]">
+        {[1, 2, 3, 4].map(i => (
+          <div key={i} className="p-6 border-b border-white/5 flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-xl bg-white/5 shrink-0" />
+              <div className="space-y-2">
+                <div className="h-3 w-32 bg-white/10 rounded-full" />
+                <div className="h-2 w-24 bg-white/5 rounded-full" />
+              </div>
+            </div>
+            <div className="h-4 w-20 bg-white/5 rounded-full hidden sm:block" />
+            <div className="h-8 w-8 bg-white/5 rounded-lg" />
+          </div>
+        ))}
+      </div>
     </div>
   </div>
+);
+
+const AdminTabLoader = ({ isLoading, children, skeleton: SkeletonComponent }: { isLoading: boolean, children: React.ReactNode, skeleton?: React.ReactNode }) => (
+  <AnimatePresence mode="wait">
+    {isLoading ? (
+      <motion.div
+        key="loader"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="w-full"
+      >
+        {SkeletonComponent || (
+          <div className="glass p-20 rounded-[40px] flex flex-col items-center justify-center gap-6">
+            <div className="relative">
+              <motion.div 
+                animate={{ rotate: 360 }}
+                transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
+                className="w-12 h-12 border-4 border-brand-primary/20 border-t-brand-primary rounded-full"
+              />
+              <motion.div 
+                animate={{ scale: [1, 1.2, 1] }}
+                transition={{ duration: 1, repeat: Infinity }}
+                className="absolute inset-0 border-4 border-brand-secondary/20 rounded-full blur-sm" 
+              />
+            </div>
+            <p className="text-[10px] font-black uppercase tracking-[0.4em] text-brand-secondary animate-pulse">Carregando Dados...</p>
+          </div>
+        )}
+      </motion.div>
+    ) : (
+      <motion.div
+        key="content"
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="w-full"
+      >
+        {children}
+      </motion.div>
+    )}
+  </AnimatePresence>
 );
 
 // --- Components ---
@@ -1250,10 +1327,11 @@ const AdminPanel = ({
         </div>
 
         {activeTab === 'queue' && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <div className="md:col-span-2 space-y-8">
-              {/* Vencedor Atual Card */}
-              {(() => {
+          <AdminTabLoader isLoading={isLoadingQueue} skeleton={<SkeletonQueue />}>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+              <div className="md:col-span-2 space-y-8">
+                {/* Vencedor Atual Card */}
+                {(() => {
                 const currentPos = settings.currentCallPosition || 1;
                 const activeQueueSorted = [...queue].filter(e => e.isActive).sort((a, b) => a.position - b.position);
                 const winner = activeQueueSorted.find(e => e.position >= currentPos) || activeQueueSorted[0];
@@ -1443,14 +1521,35 @@ const AdminPanel = ({
                       <span className="text-[8px] text-white/20 uppercase font-medium">Reseta posições sem excluir</span>
                     </div>
                   </button>
+
+                  <button 
+                    onClick={() => {
+                      onUpdateSettings({ 
+                        ...settings, 
+                        currentCallPosition: 1,
+                        lastCalledEmployeeId: null,
+                        lastCalledTimestamp: null
+                      });
+                      addNotification('Sequência de chamada resetada!', 'success');
+                    }}
+                    className="w-full flex items-center gap-3 p-4 rounded-2xl bg-white/5 hover:bg-white/10 transition-all text-left group"
+                  >
+                    <RefreshCw size={18} className="text-white/40 group-hover:text-brand-secondary" />
+                    <div className="flex flex-col">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-white/70">Resetar Sequência</span>
+                      <span className="text-[8px] text-white/20 uppercase font-medium">Volta a chamada para o 1º da fila</span>
+                    </div>
+                  </button>
                 </div>
               </div>
             </div>
           </div>
+          </AdminTabLoader>
         )}
 
         {activeTab === 'employees' && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          <AdminTabLoader isLoading={isLoadingQueue} skeleton={<SkeletonQueue />}>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             <div className="md:col-span-2 space-y-8">
               <div className="glass p-6 md:p-8 rounded-[32px] md:rounded-[40px] space-y-6">
                 <h3 className="text-lg md:text-xl font-bold uppercase tracking-tight flex items-center gap-3">
@@ -1628,17 +1727,15 @@ const AdminPanel = ({
               </div>
             </div>
           </div>
+          </AdminTabLoader>
         )}
 
         {activeTab === 'lottery' && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <div className="md:col-span-2 space-y-8">
-              {isLoadingSettings ? (
-                <SkeletonSettings />
-              ) : (
-                <>
-                  {/* Histórico de Sorteios na aba Sorteio */}
-                  <div className="glass p-8 rounded-[40px] space-y-6">
+          <AdminTabLoader isLoading={isLoadingSettings} skeleton={<SkeletonSettings />}>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+              <div className="md:col-span-2 space-y-8">
+                {/* Histórico de Sorteios na aba Sorteio */}
+                <div className="glass p-8 rounded-[40px] space-y-6">
                     <div className="flex items-center justify-between">
                       <h3 className="text-xl font-bold uppercase tracking-tight flex items-center gap-3">
                         <Trophy className="text-brand-secondary" size={20} /> Histórico de Sorteios
@@ -1693,10 +1790,9 @@ const AdminPanel = ({
                           </div>
                         ))
                       )}
-                    </div>
                   </div>
-                </>
-              )}
+                </div>
+              </div>
             </div>
 
             <div className="space-y-6">
@@ -1828,7 +1924,7 @@ const AdminPanel = ({
                 </div>
               </div>
             </div>
-          </div>
+          </AdminTabLoader>
         )}
 
         {activeTab === 'database' && (
@@ -1900,7 +1996,7 @@ const AdminPanel = ({
                 </div>
               </div>
               
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <button 
                   onClick={() => {
                     onClearHistory();
@@ -1926,6 +2022,25 @@ const AdminPanel = ({
                   </div>
                   <p className="text-[10px] text-white/30 leading-relaxed">Reseta as posições e o status de sorteio de todos os funcionários sem excluí-los.</p>
                 </button>
+
+                <button 
+                  onClick={() => {
+                    onUpdateSettings({ 
+                      ...settings, 
+                      currentCallPosition: 1,
+                      lastCalledEmployeeId: null,
+                      lastCalledTimestamp: null
+                    });
+                    addNotification('Sequência de chamada resetada!', 'success');
+                  }}
+                  className="p-6 rounded-3xl bg-white/5 border border-white/5 hover:bg-brand-secondary/10 hover:border-brand-secondary/20 transition-all text-left group"
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-white/60 group-hover:text-brand-secondary">Resetar Chamada</span>
+                    <RefreshCw size={16} className="text-white/20 group-hover:text-brand-secondary" />
+                  </div>
+                  <p className="text-[10px] text-white/30 leading-relaxed">Reinicia a sequência de chamadas para o início (1º da fila).</p>
+                </button>
               </div>
             </div>
 
@@ -1947,8 +2062,9 @@ const AdminPanel = ({
         )}
 
         {activeTab === 'history' && (
-          <div className="space-y-8">
-            <div className="flex items-center justify-between">
+          <AdminTabLoader isLoading={isLoadingHistory} skeleton={<SkeletonHistory />}>
+            <div className="space-y-8">
+              <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
                 <h3 className="text-xl font-bold uppercase tracking-tight flex items-center gap-3">
                   <Trophy className="text-brand-secondary" size={20} /> Histórico de Sorteios
@@ -2146,11 +2262,13 @@ const AdminPanel = ({
               )}
             </div>
           </div>
-        )}
+        </AdminTabLoader>
+      )}
 
         {activeTab === 'admins' && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <div className="md:col-span-2 space-y-8">
+          <AdminTabLoader isLoading={isLoadingAdmins} skeleton={<SkeletonAdmins />}>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+              <div className="md:col-span-2 space-y-8">
               <div className="glass p-6 md:p-8 rounded-[40px] space-y-6">
                 <h3 className="text-xl font-bold uppercase tracking-tight flex items-center gap-3">
                   <UserPlus className="text-brand-secondary" size={20} /> 
@@ -2533,10 +2651,12 @@ const AdminPanel = ({
               </div>
             </div>
           </div>
+          </AdminTabLoader>
         )}
 
         {activeTab === 'settings' && (
-          <div className="glass p-6 md:p-10 rounded-[40px] space-y-12 max-w-2xl">
+          <AdminTabLoader isLoading={isLoadingSettings} skeleton={<SkeletonSettings />}>
+            <div className="glass p-6 md:p-10 rounded-[40px] space-y-12 max-w-2xl">
             <div className="space-y-8">
               <h3 className="text-xl font-bold uppercase tracking-tight flex items-center gap-3">
                 <Settings className="text-brand-secondary" size={20} /> Editar Cabeçalho (Topo)
@@ -2707,10 +2827,12 @@ const AdminPanel = ({
               Salvar Todas as Alterações
             </button>
           </div>
-        )}
+        </AdminTabLoader>
+      )}
 
         {activeTab === 'files' && (
-          <div className="space-y-8 max-w-4xl">
+          <AdminTabLoader isLoading={isLoadingSettings} skeleton={<SkeletonSettings />}>
+            <div className="space-y-8 max-w-4xl">
             <div className="glass p-8 rounded-[40px] space-y-8">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
@@ -2873,6 +2995,7 @@ const AdminPanel = ({
               </div>
             </div>
           </div>
+          </AdminTabLoader>
         )}
       </div>
     </div>
@@ -4120,10 +4243,10 @@ function AppContent() {
                   <h3 className="text-2xl md:text-4xl font-light uppercase tracking-tight text-white mb-2">
                     {settings.queueTitleLine1} <span className="font-black">{settings.queueTitleLine2}</span>
                   </h3>
-                  <p className="text-[8px] md:text-[10px] font-black uppercase tracking-[0.3em] md:tracking-[0.4em] text-brand-secondary">
+                  <p className="text-[10px] md:text-xs font-black uppercase tracking-[0.3em] md:tracking-[0.4em] text-brand-secondary/60">
                     {settings.queueSubtitle}
                     {settings.lastLotteryDate && (
-                      <span className="ml-2 opacity-60">
+                      <span className="ml-3 text-brand-secondary brightness-125 text-[12px] md:text-base font-black">
                         • {new Date(settings.lastLotteryDate + 'T12:00:00').toLocaleDateString('pt-BR')}
                       </span>
                     )}
