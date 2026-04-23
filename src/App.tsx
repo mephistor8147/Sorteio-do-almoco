@@ -1489,20 +1489,31 @@ const AdminPanel = ({
                       if (aCalled !== bCalled) return aCalled ? 1 : -1;
                       return a.position - b.position;
                     }).map((emp) => (
-                      <div key={emp.id} className="glass p-4 md:p-5 rounded-[24px] md:rounded-[32px] flex items-center justify-between group">
+                      <div key={emp.id} className="glass p-4 md:p-5 rounded-[24px] md:rounded-[32px] flex items-center justify-between group border border-white/5 hover:border-brand-secondary/30 transition-all">
                         <div className="flex items-center gap-4">
-                          <div className="w-12 h-12 md:w-16 md:h-16 bg-white/5 rounded-xl flex items-center justify-center text-white/40 font-bold text-lg overflow-hidden shrink-0">
+                          <div className={`w-12 h-12 md:w-16 md:h-16 rounded-2xl flex items-center justify-center font-black text-lg md:text-xl overflow-hidden shrink-0 border-2 ${
+                            emp.position <= (settings.currentCallPosition || 1) - 1 
+                              ? 'bg-white/5 text-white/20 border-white/5' 
+                              : 'bg-brand-secondary/10 text-brand-secondary border-brand-secondary/20'
+                          }`}>
                             {emp.photoUrl ? (
                               <img src={emp.photoUrl} alt={emp.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                             ) : (
-                              emp.position
+                              `${emp.position}º`
                             )}
                           </div>
                           <div>
                             <span className="text-white font-bold uppercase tracking-tight text-sm md:text-base block">{emp.name}</span>
-                            <span className="text-[8px] font-black uppercase tracking-widest text-brand-secondary">
-                              Posição {emp.position}º
-                            </span>
+                            <div className="flex items-center gap-2">
+                              <span className={`text-[10px] font-black uppercase tracking-widest ${
+                                emp.position <= (settings.currentCallPosition || 1) - 1 ? 'text-white/20' : 'text-brand-secondary'
+                              }`}>
+                                Posição {emp.position}º
+                              </span>
+                              {emp.position === (settings.currentCallPosition || 1) && (
+                                <span className="px-2 py-0.5 bg-brand-primary text-white text-[8px] font-black uppercase rounded-full">Atual</span>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -3297,7 +3308,7 @@ const QueueItem = React.forwardRef<HTMLDivElement, {
         
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <span className={`text-[8px] md:text-[10px] font-black uppercase tracking-[0.3em] ${isFirst ? 'text-white/70' : 'text-brand-secondary/60'}`}>
+            <span className={`text-[10px] md:text-[12px] font-black uppercase tracking-[0.3em] ${isFirst ? 'text-white' : 'text-brand-secondary'}`}>
               Posição {employee.position}
             </span>
             {isFirst && (
@@ -3311,8 +3322,10 @@ const QueueItem = React.forwardRef<HTMLDivElement, {
       </div>
       
       <div className="flex items-center gap-3">
-        <div className={`w-10 h-10 md:w-12 md:h-12 rounded-2xl flex items-center justify-center text-base md:text-lg font-black transition-all ${
-          isFirst ? 'bg-white/10 text-white' : 'bg-white/5 text-white/20'
+        <div className={`w-12 h-12 md:w-16 md:h-16 rounded-[20px] flex items-center justify-center text-lg md:text-2xl font-black transition-all border-2 ${
+          isFirst 
+            ? 'bg-white text-brand-primary border-white shadow-[0_0_20px_rgba(255,255,255,0.3)]' 
+            : 'bg-brand-secondary/10 text-brand-secondary border-brand-secondary/20'
         }`}>
           {employee.position}º
         </div>
