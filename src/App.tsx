@@ -3395,6 +3395,26 @@ function AppContent() {
   const [currentAdminName, setCurrentAdminName] = useState('');
   const [calledEmployeeData, setCalledEmployeeData] = useState<Employee | null>(null);
   const [showCallPopup, setShowCallPopup] = useState(false);
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
+
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOffline(false);
+      addNotification('Você está online agora. Os dados serão sincronizados.', 'success');
+    };
+    const handleOffline = () => {
+      setIsOffline(true);
+      addNotification('Você está em modo off-line. Mudanças locais serão sincronizadas ao reconectar.', 'info');
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   const addNotification = (message: string, type: 'success' | 'error' | 'info' = 'info', description?: string) => {
     const id = Math.random().toString(36).substr(2, 9);
@@ -4247,8 +4267,19 @@ function AppContent() {
       </div>
 
       {view === 'admin' && isAuthenticated && (
-        <AdminPanel 
-          onLogout={handleLogout} 
+        <>
+          {isOffline && (
+            <motion.div 
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="fixed top-24 left-1/2 -translate-x-1/2 z-[100] px-6 py-2 bg-brand-primary/90 backdrop-blur-md rounded-full border border-white/20 shadow-xl flex items-center gap-3 pointer-events-none"
+            >
+              <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
+              <span className="text-[10px] font-black uppercase tracking-widest text-white">Modo Off-line Ativo</span>
+            </motion.div>
+          )}
+          <AdminPanel 
+            onLogout={handleLogout} 
           queue={queue} 
           onAdd={addEmployee}
           onRemove={removeEmployee}
@@ -4282,6 +4313,7 @@ function AppContent() {
           isLoadingSettings={isLoadingSettings}
           addNotification={addNotification}
         />
+        </>
       )}
 
       {view === 'public' && (
@@ -4292,6 +4324,17 @@ function AppContent() {
             settings={settings}
           />
           
+          {isOffline && (
+            <motion.div 
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="fixed top-24 left-1/2 -translate-x-1/2 z-[100] px-6 py-2 bg-brand-primary/90 backdrop-blur-md rounded-full border border-white/20 shadow-xl flex items-center gap-3 pointer-events-none"
+            >
+              <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
+              <span className="text-[10px] font-black uppercase tracking-widest text-white">Modo Off-line Ativo</span>
+            </motion.div>
+          )}
+
           <main className="max-w-3xl mx-auto space-y-12">
             <div className="space-y-0">
               <HeroCard queueCount={queue.length} settings={settings} />
