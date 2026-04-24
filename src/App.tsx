@@ -1817,71 +1817,9 @@ const AdminPanel = ({
 
         {activeTab === 'lottery' && (
           <AdminTabLoader isLoading={isLoadingSettings} skeleton={<SkeletonSettings />}>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-              <div className="md:col-span-2 space-y-8">
-                {/* Histórico de Sorteios na aba Sorteio */}
-                <div className="glass p-8 rounded-[40px] space-y-6">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-xl font-bold uppercase tracking-tight flex items-center gap-3">
-                        <Trophy className="text-brand-secondary" size={20} /> Histórico de Sorteios
-                      </h3>
-                      {history.length > 0 && (
-                        <span className="text-[10px] font-black uppercase tracking-widest text-white/40 bg-white/5 px-3 py-1.5 rounded-xl border border-white/10">
-                          Último: {new Date(history[0].timestamp).toLocaleDateString('pt-BR')}
-                        </span>
-                      )}
-                    </div>
-                    <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
-                      {history.length === 0 ? (
-                        <div className="text-center py-12 text-white/20">
-                          <Trophy size={48} className="mx-auto mb-4 opacity-10" />
-                          <p className="text-xs font-black uppercase tracking-widest">Nenhum sorteio realizado</p>
-                        </div>
-                      ) : (
-                        history.map((item) => (
-                          <div key={item.id} className="bg-white/5 border border-white/10 rounded-2xl p-4 flex items-center justify-between group hover:bg-white/10 transition-all">
-                            <div className="flex items-center gap-4">
-                              <div className="w-10 h-10 rounded-xl bg-brand-secondary/10 overflow-hidden flex items-center justify-center text-brand-secondary shrink-0 border border-white/5">
-                                {item.fullList?.[0]?.photoUrl ? (
-                                  <img src={item.fullList[0].photoUrl} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                                ) : (
-                                  <Trophy size={18} />
-                                )}
-                              </div>
-                              <div>
-                                <div className="flex items-center gap-2">
-                                  <p className="text-orange-400 font-bold text-sm">{item.winnerName}</p>
-                                  {item.type && (
-                                    <span className={`text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-md ${
-                                      item.type === 'automatic' 
-                                        ? 'bg-blue-500/10 text-blue-400' 
-                                        : 'bg-orange-500/10 text-orange-400'
-                                    }`}>
-                                      {item.type === 'automatic' ? 'Automático' : 'Manual'}
-                                    </span>
-                                  )}
-                                </div>
-                                <p className="text-[10px] text-white/40 font-black uppercase tracking-widest">
-                                  {new Date(item.timestamp).toLocaleString('pt-BR')}
-                                </p>
-                              </div>
-                            </div>
-                            <button 
-                              onClick={() => onDeleteHistoryItem(item.id)}
-                              className="w-8 h-8 rounded-lg flex items-center justify-center text-white/20 hover:bg-red-500 hover:text-white transition-all opacity-0 group-hover:opacity-100"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                        ))
-                      )}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-6">
-              <div className="glass p-8 rounded-[40px] space-y-6 text-center relative overflow-hidden">
+            <div className="space-y-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div className="glass p-8 rounded-[40px] space-y-6 text-center relative overflow-hidden">
                 {isShuffling && (
                   <motion.div 
                     initial={{ opacity: 0 }}
@@ -2006,6 +1944,68 @@ const AdminPanel = ({
                   <p className="text-[10px] text-blue-400/80 leading-relaxed font-medium">
                     O sorteio automático será realizado nos dias e horários selecionados, seguindo a mesma lógica do sorteio casual.
                   </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Histórico de Sorteios na aba Sorteio */}
+              <div className="glass p-8 rounded-[40px] space-y-6">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xl font-bold uppercase tracking-tight flex items-center gap-3">
+                      <Trophy className="text-brand-secondary" size={20} /> Histórico de Sorteios
+                    </h3>
+                    {history.length > 0 && (
+                      <span className="text-[10px] font-black uppercase tracking-widest text-white/40 bg-white/5 px-3 py-1.5 rounded-xl border border-white/10">
+                        Último: {new Date(history[0].timestamp).toLocaleDateString('pt-BR')}
+                      </span>
+                    )}
+                  </div>
+                  <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
+                    {history.length === 0 ? (
+                      <div className="text-center py-12 text-white/20">
+                        <Trophy size={48} className="mx-auto mb-4 opacity-10" />
+                        <p className="text-xs font-black uppercase tracking-widest">Nenhum sorteio realizado</p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {history.map((item) => (
+                          <div key={item.id} className="bg-white/5 border border-white/10 rounded-2xl p-4 flex items-center justify-between group hover:bg-white/10 transition-all">
+                            <div className="flex items-center gap-4">
+                              <div className="w-10 h-10 rounded-xl bg-brand-secondary/10 overflow-hidden flex items-center justify-center text-brand-secondary shrink-0 border border-white/5">
+                                {item.fullList?.[0]?.photoUrl ? (
+                                  <img src={item.fullList[0].photoUrl} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                ) : (
+                                  <Trophy size={18} />
+                                )}
+                              </div>
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <p className="text-orange-400 font-bold text-sm">{item.winnerName}</p>
+                                  {item.type && (
+                                    <span className={`text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-md ${
+                                      item.type === 'automatic' 
+                                        ? 'bg-blue-500/10 text-blue-400' 
+                                        : 'bg-orange-500/10 text-orange-400'
+                                    }`}>
+                                      {item.type === 'automatic' ? 'Automático' : 'Manual'}
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-[10px] text-white/40 font-black uppercase tracking-widest">
+                                  {new Date(item.timestamp).toLocaleString('pt-BR')}
+                                </p>
+                              </div>
+                            </div>
+                            <button 
+                              onClick={() => onDeleteHistoryItem(item.id)}
+                              className="w-8 h-8 rounded-lg flex items-center justify-center text-white/20 hover:bg-red-500 hover:text-white transition-all opacity-0 group-hover:opacity-100"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                 </div>
               </div>
             </div>
