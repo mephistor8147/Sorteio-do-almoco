@@ -83,13 +83,24 @@
       "properties": {
         "id": { "type": "string" },
         "name": { "type": "string" },
+        "username": { "type": "string" },
         "email": { "type": "string", "format": "email" },
+        "role": { "type": "string", "enum": ["admin", "coordinator"] },
         "password": { "type": "string" },
         "photoUrl": { "type": "string" },
         "isActive": { "type": "boolean" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "name", "email", "isActive", "createdAt"]
+    },
+    "UsernameMap": {
+      "title": "UsernameMap",
+      "description": "Mapping from username to email for login.",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" }
+      },
+      "required": ["email"]
     }
   },
   "firestore": {
@@ -108,6 +119,10 @@
     "/admins/{adminId}": {
       "schema": "AdminUser",
       "description": "Collection of administrator users."
+    },
+    "/usernames/{username}": {
+      "schema": "UsernameMap",
+      "description": "Safe public mapping for username-based login."
     }
   }
 }

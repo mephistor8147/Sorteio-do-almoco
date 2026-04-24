@@ -31,25 +31,25 @@ service cloud.firestore {
     function isHardcodedAdmin() {
       return isAuthenticated() && 
              request.auth.token.email != null && 
-             (request.auth.token.email.lower() == "l2xbrasil@gmail.com".lower() || 
-              request.auth.token.email.lower() == "sorteioadm@sorteio.com".lower());
+             (request.auth.token.email.toLower() == "l2xbrasil@gmail.com".toLower() || 
+              request.auth.token.email.toLower() == "sorteioadm@sorteio.com".toLower());
     }
 
     function isFullAdmin() {
       return isAuthenticated() && 
              (isHardcodedAdmin() ||
               (request.auth.token.email != null &&
-               exists(/databases/$(database)/documents/admins/$(request.auth.token.email.lower())) && 
-               get(/databases/$(database)/documents/admins/$(request.auth.token.email.lower())).data.isActive == true &&
-               get(/databases/$(database)/documents/admins/$(request.auth.token.email.lower())).data.role == 'admin'));
+               exists(/databases/$(database)/documents/admins/$(request.auth.token.email.toLower())) && 
+               get(/databases/$(database)/documents/admins/$(request.auth.token.email.toLower())).data.isActive == true &&
+               get(/databases/$(database)/documents/admins/$(request.auth.token.email.toLower())).data.role == 'admin'));
     }
 
     function isAtLeastCoordinator() {
       return isAuthenticated() && 
              (isHardcodedAdmin() || 
               (request.auth.token.email != null &&
-               exists(/databases/$(database)/documents/admins/$(request.auth.token.email.lower())) && 
-               get(/databases/$(database)/documents/admins/$(request.auth.token.email.lower())).data.isActive == true));
+               exists(/databases/$(database)/documents/admins/$(request.auth.token.email.toLower())) && 
+               get(/databases/$(database)/documents/admins/$(request.auth.token.email.toLower())).data.isActive == true));
     }
 
     function isValidId(id) {
@@ -112,6 +112,11 @@ service cloud.firestore {
       allow get: if isAuthenticated();
       allow list: if isAtLeastCoordinator();
       allow create, update, delete: if isFullAdmin();
+    }
+
+    match /usernames/{username} {
+      allow read: if true;
+      allow write: if isFullAdmin();
     }
 
     match /{path=**} {

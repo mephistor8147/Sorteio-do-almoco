@@ -7,6 +7,7 @@ import {
   Clock, 
   Users, 
   ChevronRight,
+  ChevronLeft,
   Trophy,
   Settings,
   ArrowRight,
@@ -51,6 +52,9 @@ import {
   collection, 
   doc, 
   setDoc, 
+  getDoc,
+  getDocs,
+  where,
   onSnapshot, 
   query, 
   orderBy, 
@@ -128,6 +132,7 @@ interface FileHistory {
 interface AdminUser {
   id: string;
   name: string;
+  username?: string;
   email: string;
   role: 'admin' | 'coordinator';
   password?: string;
@@ -442,22 +447,10 @@ const Header = ({ onAdminClick, isAuthenticated, settings }: { onAdminClick: () 
     </div>
     
     <div className="flex items-center gap-2 md:gap-3 shrink-0">
-      {settings.downloadUrl && (
-        <a 
-          href={settings.downloadUrl}
-          download={settings.downloadFileName || 'app'}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-2 px-3 md:px-4 py-2 rounded-xl bg-brand-primary/10 text-brand-primary hover:bg-brand-primary hover:text-white transition-all text-[8px] md:text-[10px] font-black uppercase tracking-widest"
-        >
-          <Download size={12} className="md:w-3.5 md:h-3.5" />
-          <span className="hidden xs:inline">Baixa App</span>
-          <span className="xs:hidden">App</span>
-        </a>
-      )}
       <button 
         onClick={onAdminClick}
         className={`w-8 h-8 md:w-10 md:h-10 rounded-xl md:rounded-2xl glass flex items-center justify-center transition-all ${isAuthenticated ? 'text-brand-secondary' : 'text-white/70 hover:text-white'}`}
+        title={isAuthenticated ? "Painel Admin" : "Acessar painel restrito"}
       >
         {isAuthenticated ? <Settings size={16} /> : <Lock size={16} />}
       </button>
@@ -467,7 +460,7 @@ const Header = ({ onAdminClick, isAuthenticated, settings }: { onAdminClick: () 
 
 const Login = ({ onLogin, onBack }: { onLogin: () => void, onBack: () => void }) => {
   const [error, setError] = useState<string | null>(null);
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
@@ -496,25 +489,44 @@ const Login = ({ onLogin, onBack }: { onLogin: () => void, onBack: () => void })
 
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !password) {
+    if (!identifier || !password) {
       setError("Por favor, preencha todos os campos.");
       return;
     }
 
     setIsLoading(true);
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      let emailToUse = identifier;
+      
+      // Check if identifier is an email
+      const isEmail = identifier.includes('@');
+      
+      if (!isEmail) {
+        // Try to find email by username using the safe usernames mapping
+        const usernameDoc = await getDoc(doc(db, 'usernames', identifier.toLowerCase()));
+        
+        if (usernameDoc.exists()) {
+          emailToUse = usernameDoc.data().email;
+        } else {
+          // If not found in safe mapping, might be a legacy account or invalid username
+          throw { code: 'auth/user-not-found' };
+        }
+      }
+
+      await signInWithEmailAndPassword(auth, emailToUse, password);
       onLogin();
     } catch (err: any) {
       console.error("Email Login Error:", err);
       let message = "Erro ao fazer login.";
       
       if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
-        message = "E-mail ou senha incorretos.";
+        message = "Usuário/E-mail ou senha incorretos.";
       } else if (err.code === 'auth/invalid-email') {
-        message = "E-mail inválido.";
+        message = "O formato do e-mail é inválido.";
       } else if (err.code === 'auth/too-many-requests') {
-        message = "Muitas tentativas falhas. Tente novamente mais tarde.";
+        message = "Acesso bloqueado temporariamente por muitas tentativas falhas. Tente novamente mais tarde.";
+      } else if (err.code === 'auth/user-disabled') {
+        message = "Esta conta de administrador foi desativada.";
       }
       
       setError(message);
@@ -531,7 +543,11 @@ const Login = ({ onLogin, onBack }: { onLogin: () => void, onBack: () => void })
         animate={{ opacity: 1, scale: 1 }}
         className="w-full max-w-md glass p-6 md:p-10 rounded-[32px] md:rounded-[40px] shadow-2xl relative overflow-hidden"
       >
-        <button onClick={onBack} className="absolute top-4 md:top-6 left-4 md:left-6 text-white/30 hover:text-white transition-colors">
+        <button 
+          onClick={onBack} 
+          className="absolute top-4 md:top-6 left-4 md:left-6 text-white/30 hover:text-white transition-colors"
+          title="Voltar ao Site"
+        >
           <ArrowLeft size={20} />
         </button>
         
@@ -545,12 +561,12 @@ const Login = ({ onLogin, onBack }: { onLogin: () => void, onBack: () => void })
 
         <form onSubmit={handleEmailLogin} className="space-y-3 md:space-y-4 mb-6 md:mb-8">
           <div className="space-y-1">
-            <label className="text-[7px] md:text-[8px] font-black uppercase tracking-[0.2em] text-white/40 ml-4">E-mail</label>
+            <label className="text-[7px] md:text-[8px] font-black uppercase tracking-[0.2em] text-white/40 ml-4">Usuário ou E-mail</label>
             <input 
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="admin@exemplo.com"
+              type="text"
+              value={identifier}
+              onChange={(e) => setIdentifier(e.target.value)}
+              placeholder="admin ou admin@exemplo.com"
               className="w-full bg-white/5 border border-white/10 rounded-xl md:rounded-2xl py-3 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all text-sm"
               required
             />
@@ -646,7 +662,10 @@ const AdminPanel = ({
   isLoadingFileHistory,
   isLoadingAdmins,
   isLoadingSettings,
-  addNotification
+  addNotification,
+  currentHistoryPage,
+  setCurrentHistoryPage,
+  ITEMS_PER_PAGE
 }: { 
   onLogout: () => void, 
   queue: Employee[], 
@@ -666,7 +685,7 @@ const AdminPanel = ({
   onClearHistory: () => void,
   onViewPublic: () => void,
   admins: AdminUser[],
-  onAddAdmin: (name: string, email: string, role: 'admin' | 'coordinator', password?: string, photoUrl?: string) => Promise<void>,
+  onAddAdmin: (name: string, email: string, role: 'admin' | 'coordinator', password?: string, photoUrl?: string, username?: string) => Promise<void>,
   onUpdateAdmin: (id: string, updates: Partial<AdminUser>) => Promise<void>,
   onDeleteAdmin: (id: string) => Promise<void>,
   currentUserRole: 'admin' | 'coordinator' | null,
@@ -680,7 +699,10 @@ const AdminPanel = ({
   isLoadingFileHistory: boolean,
   isLoadingAdmins: boolean,
   isLoadingSettings: boolean,
-  addNotification: (message: string, type?: 'success' | 'error' | 'info', description?: string) => void
+  addNotification: (message: string, type?: 'success' | 'error' | 'info', description?: string) => void,
+  currentHistoryPage: number,
+  setCurrentHistoryPage: React.Dispatch<React.SetStateAction<number>>,
+  ITEMS_PER_PAGE: number
 }) => {
   const [newName, setNewName] = useState('');
   const [newPhotoUrl, setNewPhotoUrl] = useState('');
@@ -689,6 +711,7 @@ const AdminPanel = ({
   const [isHeroUploading, setIsHeroUploading] = useState(false);
   
   const [adminName, setAdminName] = useState('');
+  const [adminUsername, setAdminUsername] = useState('');
   const [adminEmail, setAdminEmail] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
   const [adminPhotoUrl, setAdminPhotoUrl] = useState('');
@@ -1341,6 +1364,7 @@ const AdminPanel = ({
             <button 
               onClick={onLogout}
               className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-4 sm:py-3 rounded-2xl glass text-red-400 hover:bg-red-500/10 transition-all text-xs font-black uppercase tracking-widest"
+              title="Sair do Painel"
             >
               <LogOut size={16} /> Sair
             </button>
@@ -1351,10 +1375,14 @@ const AdminPanel = ({
           <div className="flex gap-2 min-w-max">
             {[
               { id: 'queue', label: 'Fila' },
-              { id: 'employees', label: 'Funcionário' },
+              ...(currentUserRole === 'admin' ? [
+                { id: 'employees', label: 'Funcionário' },
+              ] : []),
               { id: 'lottery', label: 'Sorteio' },
-              { id: 'settings', label: 'Configurações' },
-              { id: 'files', label: 'Arquivos' },
+              ...(currentUserRole === 'admin' ? [
+                { id: 'settings', label: 'Configurações' },
+                { id: 'files', label: 'Arquivos' },
+              ] : []),
               { id: 'history', label: 'Histórico' },
               ...(currentUserRole === 'admin' ? [
                 { id: 'database', label: 'Banco de Dados' },
@@ -1604,7 +1632,7 @@ const AdminPanel = ({
           </AdminTabLoader>
         )}
 
-        {activeTab === 'employees' && (
+        {activeTab === 'employees' && currentUserRole === 'admin' && (
           <AdminTabLoader isLoading={isLoadingQueue} skeleton={<SkeletonQueue />}>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             <div className="md:col-span-2 space-y-8">
@@ -1984,7 +2012,7 @@ const AdminPanel = ({
           </AdminTabLoader>
         )}
 
-        {activeTab === 'database' && (
+        {activeTab === 'database' && currentUserRole === 'admin' && (
           <div className="space-y-8">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               <div className="glass p-8 rounded-[40px] space-y-6 relative overflow-hidden group">
@@ -2121,58 +2149,71 @@ const AdminPanel = ({
         {activeTab === 'history' && (
           <AdminTabLoader isLoading={isLoadingHistory} skeleton={<SkeletonHistory />}>
             <div className="space-y-8">
-              <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <h3 className="text-xl font-bold uppercase tracking-tight flex items-center gap-3">
-                  <Trophy className="text-brand-secondary" size={20} /> Histórico de Sorteios
-                </h3>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 bg-white/5 p-6 rounded-[32px] border border-white/5">
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-brand-secondary/10 rounded-2xl flex items-center justify-center text-brand-secondary">
+                      <Trophy size={20} />
+                    </div>
+                    <h3 className="text-xl font-bold uppercase tracking-tight text-white">
+                      Histórico de Sorteios
+                    </h3>
+                  </div>
+                  {history.length > 0 && (
+                    <div className="flex items-center gap-2 pl-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-brand-secondary animate-pulse" />
+                      <span className="text-[10px] font-black uppercase tracking-widest text-white/40">
+                        Último sorteio em: {new Date(history[0].timestamp).toLocaleDateString('pt-BR')}
+                      </span>
+                    </div>
+                  )}
+                </div>
+                
                 {history.length > 0 && (
-                  <span className="text-[10px] font-black uppercase tracking-widest text-white/40 bg-white/5 px-3 py-1.5 rounded-xl border border-white/10">
-                    Último: {new Date(history[0].timestamp).toLocaleDateString('pt-BR')}
-                  </span>
+                  <div className="flex items-center gap-2 self-end sm:self-auto">
+                    <div className="flex items-center gap-2 p-1.5 bg-brand-bg/50 rounded-2xl border border-white/5 shadow-inner">
+                      <button 
+                        onClick={() => handleShareHistory(history[0])}
+                        className="w-10 h-10 rounded-xl bg-brand-primary/10 text-brand-primary hover:bg-brand-primary hover:text-white transition-all flex items-center justify-center"
+                        title="Compartilhar"
+                      >
+                        <Share2 size={18} />
+                      </button>
+                      <button 
+                        onClick={() => handlePrintHistory(history[0])}
+                        className="w-10 h-10 rounded-xl bg-brand-primary/10 text-brand-primary hover:bg-brand-primary hover:text-white transition-all flex items-center justify-center"
+                        title="Imprimir"
+                      >
+                        <Printer size={18} />
+                      </button>
+                      <button 
+                        onClick={() => handleDownloadPDF(history[0])}
+                        className="w-10 h-10 rounded-xl bg-brand-secondary/10 text-brand-secondary hover:bg-brand-secondary hover:text-white transition-all flex items-center justify-center"
+                        title="Baixar PDF"
+                      >
+                        <FileDown size={18} />
+                      </button>
+                      <button 
+                        onClick={() => handleDownloadXlsxHistory(history[0])}
+                        className="w-10 h-10 rounded-xl bg-green-500/10 text-green-500 hover:bg-green-500 hover:text-white transition-all flex items-center justify-center"
+                        title="Baixar XLSX"
+                      >
+                        <Download size={18} />
+                      </button>
+                    </div>
+                    
+                    <div className="w-px h-8 bg-white/10 mx-1 hidden sm:block" />
+                    
+                    <button 
+                      onClick={() => onClearHistory()}
+                      className="w-10 h-10 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-all flex items-center justify-center"
+                      title="Limpar Histórico"
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                  </div>
                 )}
               </div>
-              {history.length > 0 && (
-                <div className="flex items-center gap-3">
-                  <button 
-                    onClick={() => handleShareHistory(history[0])}
-                    className="px-4 py-2 rounded-xl bg-brand-primary/10 text-brand-primary text-[10px] font-black uppercase tracking-widest hover:bg-brand-primary hover:text-white transition-all flex items-center gap-2"
-                  >
-                    <Share2 size={14} />
-                    Compartilhar
-                  </button>
-                  <button 
-                    onClick={() => handlePrintHistory(history[0])}
-                    className="px-4 py-2 rounded-xl bg-brand-primary/10 text-brand-primary text-[10px] font-black uppercase tracking-widest hover:bg-brand-primary hover:text-white transition-all flex items-center gap-2"
-                  >
-                    <Printer size={14} />
-                    Imprimir
-                  </button>
-                  <button 
-                    onClick={() => handleDownloadPDF(history[0])}
-                    className="px-4 py-2 rounded-xl bg-brand-secondary/10 text-brand-secondary text-[10px] font-black uppercase tracking-widest hover:bg-brand-secondary hover:text-white transition-all flex items-center gap-2"
-                  >
-                    <FileDown size={14} />
-                    PDF
-                  </button>
-                  <button 
-                    onClick={() => handleDownloadXlsxHistory(history[0])}
-                    className="px-4 py-2 rounded-xl bg-green-500/10 text-green-500 text-[10px] font-black uppercase tracking-widest hover:bg-green-500 hover:text-white transition-all flex items-center gap-2"
-                  >
-                    <Download size={14} />
-                    XLSX
-                  </button>
-                  <button 
-                    onClick={() => {
-                      onClearHistory();
-                    }}
-                    className="px-4 py-2 rounded-xl bg-red-500/10 text-red-500 text-[10px] font-black uppercase tracking-widest hover:bg-red-500 hover:text-white transition-all"
-                  >
-                    Limpar Histórico
-                  </button>
-                </div>
-              )}
-            </div>
 
             <div className={history.length > 0 ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" : "space-y-4"}>
               {isLoadingHistory ? (
@@ -2185,7 +2226,7 @@ const AdminPanel = ({
                   <p className="text-white/40 text-xs font-bold uppercase tracking-widest">Nenhum sorteio registrado ainda.</p>
                 </div>
               ) : (
-                history.map((item) => (
+                history.slice((currentHistoryPage - 1) * ITEMS_PER_PAGE, currentHistoryPage * ITEMS_PER_PAGE).map((item) => (
                   <div key={item.id} className={`flex flex-col gap-2 ${expandedHistory === item.id ? 'col-span-full' : ''}`}>
                     <motion.div 
                       initial={{ opacity: 0, scale: 0.95 }}
@@ -2335,11 +2376,36 @@ const AdminPanel = ({
                 ))
               )}
             </div>
+
+            {history.length > ITEMS_PER_PAGE && (
+              <div className="flex items-center justify-center gap-4 pt-8">
+                <button
+                  onClick={() => setCurrentHistoryPage(prev => Math.max(1, prev - 1))}
+                  disabled={currentHistoryPage === 1}
+                  className="px-6 py-3 rounded-2xl bg-white/5 border border-white/5 text-white/50 text-xs font-black uppercase tracking-widest hover:bg-white/10 hover:text-white disabled:opacity-30 disabled:pointer-events-none transition-all flex items-center gap-2"
+                >
+                  <ChevronLeft size={16} />
+                  Anterior
+                </button>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-black text-brand-secondary uppercase tracking-widest">Página {currentHistoryPage}</span>
+                  <span className="text-[10px] font-black text-white/20 uppercase tracking-widest">de {Math.ceil(history.length / ITEMS_PER_PAGE)}</span>
+                </div>
+                <button
+                  onClick={() => setCurrentHistoryPage(prev => Math.min(Math.ceil(history.length / ITEMS_PER_PAGE), prev + 1))}
+                  disabled={currentHistoryPage === Math.ceil(history.length / ITEMS_PER_PAGE)}
+                  className="px-6 py-3 rounded-2xl bg-white/5 border border-white/5 text-white/50 text-xs font-black uppercase tracking-widest hover:bg-white/10 hover:text-white disabled:opacity-30 disabled:pointer-events-none transition-all flex items-center gap-2"
+                >
+                  Próximo
+                  <ChevronRight size={16} />
+                </button>
+              </div>
+            )}
           </div>
         </AdminTabLoader>
       )}
 
-        {activeTab === 'admins' && (
+        {activeTab === 'admins' && currentUserRole === 'admin' && (
           <AdminTabLoader isLoading={isLoadingAdmins} skeleton={<SkeletonAdmins />}>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
               <div className="md:col-span-2 space-y-8">
@@ -2356,6 +2422,16 @@ const AdminPanel = ({
                       value={adminName}
                       onChange={(e) => setAdminName(e.target.value)}
                       placeholder="Nome completo"
+                      className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-4">Usuário</label>
+                    <input 
+                      type="text"
+                      value={adminUsername}
+                      onChange={(e) => setAdminUsername(e.target.value.toLowerCase().replace(/\s+/g, ''))}
+                      placeholder="identificador (ex: joao)"
                       className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all"
                     />
                   </div>
@@ -2445,6 +2521,7 @@ const AdminPanel = ({
                     onClick={() => {
                       const trimmedName = adminName.trim();
                       const trimmedEmail = adminEmail.trim().toLowerCase();
+                      const trimmedUsername = adminUsername.trim();
                       
                       if (!trimmedName) {
                         addNotification('Nome é obrigatório.', 'error');
@@ -2487,6 +2564,7 @@ const AdminPanel = ({
                         setIsSavingAdmin(true);
                         onUpdateAdmin(editingAdminId, { 
                           name: trimmedName, 
+                          username: trimmedUsername || undefined,
                           email: trimmedEmail, 
                           role: adminRole,
                           password: adminPassword || undefined,
@@ -2495,6 +2573,7 @@ const AdminPanel = ({
                           setIsSavingAdmin(false);
                           setEditingAdminId(null);
                           setAdminName('');
+                          setAdminUsername('');
                           setAdminEmail('');
                           setAdminPassword('');
                           setAdminConfirmPassword('');
@@ -2514,6 +2593,7 @@ const AdminPanel = ({
                           onClick={() => {
                             setEditingAdminId(null);
                             setAdminName('');
+                            setAdminUsername('');
                             setAdminEmail('');
                             setAdminPassword('');
                             setAdminConfirmPassword('');
@@ -2551,7 +2631,8 @@ const AdminPanel = ({
                             <span className="text-brand-secondary font-black mx-1">
                               {adminRole === 'admin' ? 'ADMINISTRADOR' : 'COORDENADOR'}
                             </span>
-                            para o email <span className="text-white font-bold">{adminEmail}</span>.
+                            para o email <span className="text-white font-bold">{adminEmail}</span> 
+                            {adminUsername && <> (@<span className="text-brand-secondary font-bold">{adminUsername}</span>)</>}.
                           </p>
                         </div>
                         
@@ -2579,8 +2660,9 @@ const AdminPanel = ({
                             onClick={async () => {
                               setIsSavingAdmin(true);
                               try {
-                                await onAddAdmin(adminName.trim(), adminEmail.trim().toLowerCase(), adminRole, adminPassword, adminPhotoUrl);
+                                await onAddAdmin(adminName.trim(), adminEmail.trim().toLowerCase(), adminRole, adminPassword, adminPhotoUrl, adminUsername.trim());
                                 setAdminName('');
+                                setAdminUsername('');
                                 setAdminEmail('');
                                 setAdminPassword('');
                                 setAdminConfirmPassword('');
@@ -2642,7 +2724,11 @@ const AdminPanel = ({
                                   </div>
                                   <div>
                                     <h4 className="text-white text-sm font-bold uppercase tracking-tight">{admin.name}</h4>
-                                    <p className="text-brand-secondary text-[8px] font-black uppercase tracking-widest mt-0.5">{admin.email}</p>
+                                    <div className="flex items-center gap-2 mt-0.5">
+                                      {admin.username && <span className="text-brand-secondary text-[8px] font-black uppercase tracking-widest">@{admin.username}</span>}
+                                      {admin.username && <span className="text-white/20 text-[8px] font-black">•</span>}
+                                      <p className="text-white/40 text-[8px] font-bold tracking-widest">{admin.email}</p>
+                                    </div>
                                   </div>
                                 </div>
                               </td>
@@ -2669,6 +2755,7 @@ const AdminPanel = ({
                                     onClick={() => {
                                       setEditingAdminId(admin.id);
                                       setAdminName(admin.name);
+                                      setAdminUsername(admin.username || '');
                                       setAdminEmail(admin.email);
                                       setAdminRole(admin.role || 'coordinator');
                                       setAdminPassword(admin.password || '');
@@ -2728,7 +2815,7 @@ const AdminPanel = ({
           </AdminTabLoader>
         )}
 
-        {activeTab === 'settings' && (
+        {activeTab === 'settings' && currentUserRole === 'admin' && (
           <AdminTabLoader isLoading={isLoadingSettings} skeleton={<SkeletonSettings />}>
             <div className="glass p-6 md:p-10 rounded-[40px] space-y-12 max-w-2xl">
             <div className="space-y-8">
@@ -2904,7 +2991,7 @@ const AdminPanel = ({
         </AdminTabLoader>
       )}
 
-        {activeTab === 'files' && (
+        {activeTab === 'files' && currentUserRole === 'admin' && (
           <AdminTabLoader isLoading={isLoadingSettings} skeleton={<SkeletonSettings />}>
             <div className="space-y-8 max-w-4xl">
             <div className="glass p-8 rounded-[40px] space-y-8">
@@ -3002,9 +3089,10 @@ const AdminPanel = ({
                 {fileHistory.length > 0 && (
                   <button 
                     onClick={onClearFileHistory}
-                    className="px-4 py-2 rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white transition-all text-[10px] font-black uppercase tracking-widest"
+                    className="w-10 h-10 rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white transition-all flex items-center justify-center"
+                    title="Limpar Histórico"
                   >
-                    Limpar Histórico
+                    <Trash2 size={18} />
                   </button>
                 )}
               </div>
@@ -3113,18 +3201,6 @@ const HeroCard = ({ queueCount, settings }: { queueCount: number, settings: AppS
         </p>
         
         <div className="flex flex-col sm:flex-row flex-wrap gap-3">
-          {settings.downloadUrl && (
-            <a 
-              href={settings.downloadUrl}
-              download={settings.downloadFileName || 'app'}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="px-6 py-3 rounded-full bg-brand-primary text-white flex items-center justify-center sm:justify-start gap-3 hover:bg-brand-primary/80 transition-all shadow-lg shadow-brand-primary/20"
-            >
-              <Download size={16} />
-              <span className="text-xs font-black uppercase tracking-widest">Baixa App</span>
-            </a>
-          )}
           <div className="flex gap-3 w-full sm:w-auto">
             <div className="flex-1 sm:flex-none px-5 py-3 rounded-full glass flex items-center justify-center sm:justify-start gap-3">
               <Clock size={16} className="text-brand-secondary" />
@@ -3282,10 +3358,15 @@ const QueueItem = React.forwardRef<HTMLDivElement, {
       ref={ref}
       initial={{ opacity: 0, x: -20 }}
       animate={{ opacity: 1, x: 0 }}
-      className={`group flex items-center justify-between p-5 md:p-6 rounded-[32px] transition-all duration-500 ${
+      whileHover={!isFirst ? { 
+        x: 8, 
+        backgroundColor: "rgba(255, 255, 255, 0.05)",
+        borderColor: "rgba(255, 255, 255, 0.1)"
+      } : { scale: 1.02 }}
+      className={`group flex items-center justify-between p-5 md:p-6 rounded-[32px] transition-all duration-500 cursor-pointer ${
         isFirst 
-          ? 'bg-brand-primary text-white shadow-2xl shadow-brand-primary/20 scale-[1.02] z-10' 
-          : 'bg-brand-card/50 hover:bg-brand-card text-white/80 border border-white/5'
+          ? 'bg-brand-primary text-white shadow-[0_20px_50px_rgba(235,51,73,0.3)] z-10' 
+          : 'bg-brand-card/30 text-white/80 border border-white/5'
       }`}
     >
       <div className="flex items-center gap-4 md:gap-6">
@@ -3306,28 +3387,45 @@ const QueueItem = React.forwardRef<HTMLDivElement, {
           )}
         </div>
         
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className={`text-[10px] md:text-[12px] font-black uppercase tracking-[0.3em] ${isFirst ? 'text-white' : 'text-brand-secondary'}`}>
-              Posição {employee.position}
+        <div className="flex flex-col gap-1.5 md:gap-3">
+          <div className="flex items-center gap-2">
+            <span className={`text-[9px] md:text-[10px] font-black uppercase tracking-[0.4em] px-2 py-1 rounded-lg ${
+              isFirst ? 'bg-white/20 text-white' : 'bg-brand-secondary/10 text-brand-secondary'
+            }`}>
+              Em espera
             </span>
             {isFirst && (
-              <span className="px-2 py-0.5 bg-white/20 text-white text-[7px] md:text-[8px] font-black uppercase rounded-full backdrop-blur-md">Próximo</span>
+              <motion.span 
+                animate={{ opacity: [0.5, 1, 0.5] }}
+                transition={{ duration: 2, repeat: Infinity }}
+                className="px-2 py-1 bg-white/20 text-white text-[7px] md:text-[8px] font-black uppercase rounded-lg backdrop-blur-md"
+              >
+                Vez de
+              </motion.span>
             )}
           </div>
-          <h4 className={`text-base md:text-xl font-bold tracking-tight uppercase ${isFirst ? 'text-white' : 'text-white/90'}`}>
-            {employee.name}
-          </h4>
+          <div className="space-y-1">
+            <h4 className={`text-lg md:text-2xl font-black tracking-tighter uppercase leading-none ${isFirst ? 'text-white' : 'text-white/90 group-hover:text-white transition-colors'}`}>
+              {employee.name}
+            </h4>
+            <div className="flex items-center gap-2">
+              <span className={`w-1 h-1 rounded-full ${isFirst ? 'bg-white' : 'bg-brand-secondary'}`} />
+              <p className={`text-[9px] md:text-[10px] font-bold uppercase tracking-[0.2em] ${isFirst ? 'text-white/60' : 'text-white/20'}`}>
+                Registro #{employee.id.slice(0, 6)}
+              </p>
+            </div>
+          </div>
         </div>
       </div>
       
       <div className="flex items-center gap-3">
-        <div className={`w-12 h-12 md:w-16 md:h-16 rounded-[20px] flex items-center justify-center text-lg md:text-2xl font-black transition-all border-2 ${
+        <div className={`w-12 h-12 md:w-16 md:h-16 rounded-[24px] flex flex-col items-center justify-center transition-all border-2 ${
           isFirst 
-            ? 'bg-white text-brand-primary border-white shadow-[0_0_20px_rgba(255,255,255,0.3)]' 
-            : 'bg-brand-secondary/10 text-brand-secondary border-brand-secondary/20'
+            ? 'bg-white text-brand-primary border-white shadow-[0_0_30px_rgba(255,255,255,0.4)]' 
+            : 'bg-brand-secondary/5 text-brand-secondary border-brand-secondary/20 group-hover:bg-brand-secondary/10 group-hover:border-brand-secondary/30'
         }`}>
-          {employee.position}º
+          <span className="text-xl md:text-2xl font-black leading-none">{employee.position}</span>
+          <span className="text-[8px] md:text-[9px] font-black uppercase opacity-60">Pos</span>
         </div>
       </div>
     </motion.div>
@@ -3393,6 +3491,8 @@ function AppContent() {
   const [notifications, setNotifications] = useState<{ id: string, message: string, type: 'success' | 'error' | 'info', description?: string }[]>([]);
   const [queue, setQueue] = useState<Employee[]>([]);
   const [history, setHistory] = useState<LotteryHistory[]>([]);
+  const [currentHistoryPage, setCurrentHistoryPage] = useState(1);
+  const ITEMS_PER_PAGE = 10;
   const [fileHistory, setFileHistory] = useState<FileHistory[]>([]);
   const [isProcessingShuffle, setIsProcessingShuffle] = useState(false);
   const [admins, setAdmins] = useState<AdminUser[]>([]);
@@ -4010,6 +4110,7 @@ function AppContent() {
         await batch.commit();
       }
       
+      setCurrentHistoryPage(1);
       addNotification('Histórico limpo com sucesso!', 'success');
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
@@ -4021,6 +4122,10 @@ function AppContent() {
   const deleteHistoryItem = async (id: string) => {
     try {
       await deleteDoc(doc(db, 'history', id));
+      // Adjust page if necessary
+      if (history.length % ITEMS_PER_PAGE === 1 && currentHistoryPage > 1) {
+        setCurrentHistoryPage(prev => prev - 1);
+      }
       addNotification('Registro removido do histórico.', 'info');
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
@@ -4029,13 +4134,23 @@ function AppContent() {
     }
   };
 
-  const addAdmin = async (name: string, email: string, role: 'admin' | 'coordinator', password?: string, photoUrl?: string) => {
+  const addAdmin = async (name: string, email: string, role: 'admin' | 'coordinator', password?: string, photoUrl?: string, username?: string) => {
     const adminId = email.toLowerCase();
     
     // Check if admin already exists in Firestore
     if (admins.some(a => a.id === adminId)) {
       addNotification('Este email já está cadastrado como administrador.', 'error');
       return;
+    }
+
+    // Check if username already exists if provided
+    if (username) {
+      const usernameLower = username.toLowerCase();
+      const usernameDoc = await getDoc(doc(db, 'usernames', usernameLower));
+      if (usernameDoc.exists()) {
+        addNotification('Este nome de usuário já está em uso.', 'error');
+        return;
+      }
     }
 
     // Create Auth User if password is provided
@@ -4055,23 +4170,24 @@ function AppContent() {
 
         switch (authErr.code) {
           case 'auth/email-already-in-use':
-            // This is not strictly an error if we are just adding them to the admins collection
-            // but we should still notify the user for clarity.
             errorTitle = 'Conta identificada';
-            errorMessage = 'Este email já possui uma conta no sistema. O acesso administrativo será vinculado a ela.';
+            errorMessage = 'Este e-mail já possui uma conta no sistema. O acesso administrativo será vinculado a ela.';
             isCritical = false;
             break;
           case 'auth/weak-password':
-            errorMessage = 'A senha escolhida é muito fraca. Escolha uma senha mais segura (mínimo 6 caracteres).';
+            errorMessage = 'A senha escolhida é muito fraca. Mínimo de 6 caracteres.';
             break;
           case 'auth/invalid-email':
-            errorMessage = 'O formato do email fornecido é inválido.';
+            errorMessage = 'O formato do e-mail é inválido.';
             break;
           case 'auth/operation-not-allowed':
-            errorMessage = 'O login com email/senha não está habilitado no Firebase Console.';
+            errorMessage = 'O provedor de e-mail/senha não está ativado no Firebase.';
+            break;
+          case 'auth/invalid-credential':
+            errorMessage = 'As credenciais fornecidas são inválidas ou expiraram.';
             break;
           default:
-            errorMessage = authErr.message || errorMessage;
+            errorMessage = 'Erro interno de autenticação. Tente novamente.';
         }
 
         if (isCritical) {
@@ -4093,6 +4209,7 @@ function AppContent() {
     const newAdmin: AdminUser = {
       id: adminId,
       name,
+      username,
       email,
       role,
       isActive: true,
@@ -4101,7 +4218,12 @@ function AppContent() {
       ...(photoUrl ? { photoUrl } : {})
     };
     try {
-      await setDoc(doc(db, 'admins', adminId), newAdmin);
+      const batch = writeBatch(db);
+      batch.set(doc(db, 'admins', adminId), newAdmin);
+      if (username) {
+        batch.set(doc(db, 'usernames', username.toLowerCase()), { email: email.toLowerCase() });
+      }
+      await batch.commit();
       addNotification(`Administrador ${name} adicionado!`, 'success');
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
@@ -4112,11 +4234,29 @@ function AppContent() {
 
   const updateAdmin = async (id: string, updates: Partial<AdminUser>) => {
     try {
+      const oldAdmin = admins.find(a => a.id === id);
+      const batch = writeBatch(db);
+
       // Sanitize updates to remove undefined
       const sanitizedUpdates = Object.fromEntries(
         Object.entries(updates).filter(([_, v]) => v !== undefined)
       );
-      await updateDoc(doc(db, 'admins', id), sanitizedUpdates);
+      
+      batch.update(doc(db, 'admins', id), sanitizedUpdates);
+
+      // Manage username map changes
+      if (updates.username !== undefined && updates.username !== oldAdmin?.username) {
+        // Delete old username mapping
+        if (oldAdmin?.username) {
+          batch.delete(doc(db, 'usernames', oldAdmin.username.toLowerCase()));
+        }
+        // Add new username mapping
+        if (updates.username) {
+          batch.set(doc(db, 'usernames', updates.username.toLowerCase()), { email: id.toLowerCase() });
+        }
+      }
+
+      await batch.commit();
       addNotification('Administrador atualizado com sucesso!', 'success');
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
@@ -4127,7 +4267,16 @@ function AppContent() {
 
   const deleteAdmin = async (id: string) => {
     try {
-      await deleteDoc(doc(db, 'admins', id));
+      const adminToDelete = admins.find(a => a.id === id);
+      const batch = writeBatch(db);
+      
+      batch.delete(doc(db, 'admins', id));
+      
+      if (adminToDelete?.username) {
+        batch.delete(doc(db, 'usernames', adminToDelete.username.toLowerCase()));
+      }
+
+      await batch.commit();
       addNotification('Administrador removido.', 'info');
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
@@ -4325,6 +4474,9 @@ function AppContent() {
           isLoadingAdmins={isLoadingAdmins}
           isLoadingSettings={isLoadingSettings}
           addNotification={addNotification}
+          currentHistoryPage={currentHistoryPage}
+          setCurrentHistoryPage={setCurrentHistoryPage}
+          ITEMS_PER_PAGE={ITEMS_PER_PAGE}
         />
         </>
       )}

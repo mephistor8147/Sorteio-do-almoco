@@ -17,6 +17,9 @@ export default defineConfig(({ mode }) => {
       VitePWA({
         registerType: 'autoUpdate',
         includeAssets: ['favicon.svg', 'apple-touch-icon.png', 'masked-icon.svg'],
+        workbox: {
+          maximumFileSizeToCacheInBytes: 3000000, // 3MB
+        },
         manifest: {
           name: 'Amazonas - Fila Gourmet',
           short_name: 'Fila Gourmet',
