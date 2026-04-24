@@ -724,20 +724,35 @@ const AdminPanel = ({
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
 
-  const speak = (text: string) => {
-    if (!settings.voiceCallEnabled) return;
+  const speak = (text: string, force = false) => {
+    if (!settings.voiceCallEnabled && !force) return;
     
     try {
+      if (!window.speechSynthesis) {
+        console.warn('SpeechSynthesis não suportado neste navegador.');
+        return;
+      }
+
       // Cancelar qualquer fala em andamento
       window.speechSynthesis.cancel();
       
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = 'pt-BR';
-      utterance.rate = 0.9; // Um pouco mais lento para ficar claro
-      utterance.pitch = 1;
-      utterance.volume = 1;
-      
-      window.speechSynthesis.speak(utterance);
+      // Delay pequeno para garantir que o cancelamento foi processado
+      setTimeout(() => {
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'pt-BR';
+        utterance.rate = 1.0; 
+        utterance.pitch = 1;
+        utterance.volume = 1;
+        
+        // Tentar encontrar uma voz pt-BR
+        const voices = window.speechSynthesis.getVoices();
+        const ptBRVoice = voices.find(v => v.lang === 'pt-BR' || v.lang === 'pt_BR');
+        if (ptBRVoice) {
+          utterance.voice = ptBRVoice;
+        }
+        
+        window.speechSynthesis.speak(utterance);
+      }, 100);
     } catch (err) {
       console.error('Erro ao falar:', err);
     }
@@ -1581,7 +1596,14 @@ const AdminPanel = ({
                 <div className="grid grid-cols-1 gap-3">
                   <button 
                     onClick={() => {
-                      onUpdateSettings({ ...settings, voiceCallEnabled: !settings.voiceCallEnabled });
+                      const newStatus = !settings.voiceCallEnabled;
+                      onUpdateSettings({ ...settings, voiceCallEnabled: newStatus });
+                      
+                      if (newStatus) {
+                        setTimeout(() => {
+                          speak('Chamada por voz ativada. O sistema agora anunciará os nomes.', true);
+                        }, 500);
+                      }
                     }}
                     className={`w-full flex items-center gap-3 p-4 rounded-2xl transition-all text-left group ${settings.voiceCallEnabled ? 'bg-brand-primary/20 border border-brand-primary/20' : 'bg-white/5 border border-white/5'}`}
                   >
