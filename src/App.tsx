@@ -3715,6 +3715,40 @@ const SystemLoader = () => (
 
 function AppContent() {
   const [view, setView] = useState<'public' | 'login' | 'admin'>('public');
+  const [hasInteracted, setHasInteracted] = useState(false);
+  const isFirstCallRef = useRef(true);
+
+  useEffect(() => {
+    const handleInteraction = () => {
+      if (!hasInteracted) {
+        setHasInteracted(true);
+        // Prime speech synthesis on first interaction
+        try {
+          if (window.speechSynthesis) {
+            const utterance = new SpeechSynthesisUtterance('');
+            window.speechSynthesis.speak(utterance);
+          }
+        } catch (e) {
+          console.error("Erro ao primar áudio:", e);
+        }
+      }
+    };
+    window.addEventListener('click', handleInteraction);
+    window.addEventListener('touchstart', handleInteraction);
+    return () => {
+      window.removeEventListener('click', handleInteraction);
+      window.removeEventListener('touchstart', handleInteraction);
+    };
+  }, [hasInteracted]);
+
+  useEffect(() => {
+    if (view === 'public' && !hasInteracted && isAuthReady) {
+      const timer = setTimeout(() => {
+        addNotification("Toque na tela ou interaja para ativar o sistema de voz das chamadas.", "info");
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [view, hasInteracted, isAuthReady]);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [currentUserRole, setCurrentUserRole] = useState<'admin' | 'coordinator' | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -3751,38 +3785,46 @@ function AppContent() {
 
       // Função para realizar a fala
       const performSpeech = () => {
-        // Cancelar qualquer fala em andamento
+        // Cancelar qualquer fala em andamento para evitar sobreposição e bugs
         window.speechSynthesis.cancel();
         
-        // Delay pequeno para garantir que o cancelamento foi processado
+        // Delay para garantir que o cancelamento foi processado e o áudio liberado
         setTimeout(() => {
           const utterance = new SpeechSynthesisUtterance(text);
           utterance.lang = 'pt-BR';
-          utterance.rate = 1.0; 
+          utterance.rate = 0.9; // Um pouco mais lento para clareza
           utterance.pitch = 1;
           utterance.volume = 1;
           
+          // Tentar encontrar uma voz feminina em português se possível (geralmente mais clara)
           const voices = window.speechSynthesis.getVoices();
-          const ptBRVoice = voices.find(v => v.lang === 'pt-BR' || v.lang === 'pt_BR');
-          if (ptBRVoice) {
-            utterance.voice = ptBRVoice;
+          const ptBRVoices = voices.filter(v => v.lang.startsWith('pt'));
+          const selectedVoice = ptBRVoices.find(v => v.name.toLowerCase().includes('google') || v.name.toLowerCase().includes('female')) || ptBRVoices[0];
+          
+          if (selectedVoice) {
+            utterance.voice = selectedVoice;
           }
           
+          utterance.onerror = (event) => {
+            console.error('Erro na síntese de voz:', event.error);
+          };
+
           window.speechSynthesis.speak(utterance);
-        }, 100);
+        }, 150);
       };
 
       // Se as vozes não foram carregadas ainda, esperar pelo evento
       if (window.speechSynthesis.getVoices().length === 0) {
-        window.speechSynthesis.onvoiceschanged = () => {
+        const handleVoicesChanged = () => {
           performSpeech();
-          window.speechSynthesis.onvoiceschanged = null; // Remover após rodar uma vez
+          window.speechSynthesis.onvoiceschanged = null;
         };
+        window.speechSynthesis.onvoiceschanged = handleVoicesChanged;
       } else {
         performSpeech();
       }
     } catch (err) {
-      console.error('Erro ao falar:', err);
+      console.error('Erro ao inicializar fala:', err);
     }
   };
 
@@ -3856,22 +3898,34 @@ function AppContent() {
 
   // Queue Call Listener
   useEffect(() => {
-    if (settings.lastCalledTimestamp && settings.lastCalledTimestamp !== lastCallEffect && settings.lastCalledEmployeeId) {
-      setLastCallEffect(settings.lastCalledTimestamp);
-      
-      const called = queue.find(e => e.id === settings.lastCalledEmployeeId);
-      if (called) {
-        setCalledEmployeeData(called);
-        setShowCallPopup(true);
-        
-        // Voice Reproduce for all (especially non-logged)
-        speak(`Próximo na fila: ${called.name}`, true);
+    if (settings.lastCalledTimestamp && settings.lastCalledEmployeeId) {
+      // Se for a primeira vez que o componente carrega, apenas sincronizamos o estado sem falar
+      if (isFirstCallRef.current) {
+        setLastCallEffect(settings.lastCalledTimestamp);
+        isFirstCallRef.current = false;
+        return;
+      }
 
-        const timer = setTimeout(() => setShowCallPopup(false), 8000);
-        return () => clearTimeout(timer);
+      if (settings.lastCalledTimestamp !== lastCallEffect) {
+        setLastCallEffect(settings.lastCalledTimestamp);
+        
+        const called = queue.find(e => e.id === settings.lastCalledEmployeeId);
+        if (called) {
+          setCalledEmployeeData(called);
+          setShowCallPopup(true);
+          
+          // Voice Reproduce for all (especially non-logged)
+          // Usamos um pequeno delay extra para garantir que o componente de popup já esteja visível
+          setTimeout(() => {
+            speak(`Atenção. Próximo da fila: ${called.name}`, true);
+          }, 500);
+
+          const timer = setTimeout(() => setShowCallPopup(false), 8000);
+          return () => clearTimeout(timer);
+        }
       }
     }
-  }, [settings.lastCalledTimestamp, settings.lastCalledEmployeeId, lastCallEffect, queue, isAuthenticated]);
+  }, [settings.lastCalledTimestamp, settings.lastCalledEmployeeId, lastCallEffect, queue]);
 
   // Auth Listener
   useEffect(() => {
