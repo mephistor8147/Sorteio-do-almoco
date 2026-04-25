@@ -364,26 +364,26 @@ const CallNotificationPopup = ({ employee, onClose, isAuthenticated, isLastCalle
     >
       {/* Solid background for total focus */}
       <div className="absolute inset-0 bg-[#0a0f0c] pointer-events-none" />
-      
+
       {/* Fullscreen Container */}
-      <div className="w-full h-full flex flex-col items-center justify-center p-6 md:p-20 relative z-10 overflow-hidden">
+      <div className="w-full h-full max-h-screen flex flex-col items-center justify-center p-4 md:p-12 relative z-10 overflow-hidden">
         
         {/* Giant progress bar at the top */}
-        <div className="absolute top-0 left-0 w-full h-2 bg-white/5">
+        <div className="absolute top-0 left-0 w-full h-3 bg-white/5">
           <motion.div 
             initial={{ width: '0%' }}
             animate={{ width: '100%' }}
-            transition={{ duration: 8, ease: 'linear' }}
-            className="h-full bg-brand-primary shadow-[0_0_20px_rgba(34,197,94,0.5)]"
+            transition={{ duration: 8, ease: "linear" }}
+            className="h-full bg-brand-primary shadow-[0_0_30px_rgba(34,197,94,0.6)]"
           />
         </div>
 
         {/* Close Button (Icon) */}
         <button 
           onClick={onClose}
-          className="absolute top-8 right-8 text-white/30 hover:text-white transition-colors p-4 md:p-6"
+          className="absolute top-8 right-8 text-white/20 hover:text-white transition-colors p-6 z-50"
         >
-          <X className="w-8 h-8 md:w-12 md:h-12" />
+          <X className="w-10 h-10 md:w-16 md:h-16" />
         </button>
 
         {/* Announcement Header */}
@@ -391,27 +391,27 @@ const CallNotificationPopup = ({ employee, onClose, isAuthenticated, isLastCalle
           initial={{ y: -20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ delay: 0.2 }}
-          className="flex flex-col items-center gap-4 mb-8 md:mb-12"
+          className="flex flex-col items-center gap-4 mb-6 md:mb-10"
         >
-          <span className="text-xs md:text-xl font-black uppercase tracking-[0.5em] text-brand-secondary animate-pulse">
+          <span className="text-sm md:text-2xl 2xl:text-4xl font-black uppercase tracking-[0.5em] text-brand-secondary animate-pulse">
             {isLastCalled ? "Finalizando Chamada" : "Chamada Prioritária"}
           </span>
-          <div className="w-24 md:w-48 h-1.5 bg-brand-secondary/30 rounded-full" />
+          <div className="w-32 md:w-64 h-2 bg-brand-secondary/30 rounded-full" />
         </motion.div>
 
-        {/* Giant Photo Area */}
+        {/* Giant Photo Area - Optimized for TV heights */}
         <motion.div 
           initial={{ scale: 0.8, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           transition={{ type: "spring", damping: 12 }}
-          className="relative mb-8 md:mb-16"
+          className="relative mb-6 md:mb-12"
         >
-          <div className="w-48 h-48 sm:w-64 sm:h-64 md:w-96 md:h-96 rounded-[40px] md:rounded-[80px] overflow-hidden border-4 border-brand-primary shadow-[0_0_80px_rgba(34,197,94,0.3)] relative z-10 bg-brand-card">
+          <div className="w-48 h-48 sm:w-64 sm:h-64 md:w-72 md:h-72 lg:w-80 lg:h-80 2xl:w-[500px] 2xl:h-[500px] rounded-[40px] md:rounded-[60px] 2xl:rounded-[100px] overflow-hidden border-4 md:border-8 border-brand-primary shadow-[0_0_100px_rgba(34,197,94,0.4)] relative z-10 bg-brand-card">
             {employee.photoUrl ? (
               <img src={employee.photoUrl} alt={employee.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
             ) : (
               <div className="w-full h-full flex items-center justify-center bg-brand-primary/10 text-brand-primary">
-                <UserIcon className="w-24 h-24 md:w-40 md:h-40" />
+                <UserIcon className="w-24 h-24 md:w-40 md:h-40 2xl:w-64 2xl:h-64" />
               </div>
             )}
           </div>
@@ -421,7 +421,7 @@ const CallNotificationPopup = ({ employee, onClose, isAuthenticated, isLastCalle
             initial={{ x: 20, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
             transition={{ delay: 0.4 }}
-            className="absolute -top-6 -right-6 w-16 h-16 md:w-32 md:h-32 bg-white text-brand-bg rounded-[20px] md:rounded-[40px] flex items-center justify-center font-black text-2xl md:text-5xl shadow-2xl z-20 border-4 md:border-8 border-brand-primary"
+            className="absolute -top-4 -right-4 md:-top-8 md:-right-8 w-16 h-16 md:w-24 md:h-24 2xl:w-40 2xl:h-40 bg-white text-brand-bg rounded-[20px] md:rounded-[40px] flex items-center justify-center font-black text-2xl md:text-4xl 2xl:text-7xl shadow-2xl z-20 border-4 md:border-8 border-brand-primary"
           >
             {employee.position}º
           </motion.div>
@@ -432,22 +432,22 @@ const CallNotificationPopup = ({ employee, onClose, isAuthenticated, isLastCalle
           initial={{ y: 20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ delay: 0.3 }}
-          className="text-center space-y-4 md:space-y-8 max-w-4xl"
+          className="text-center space-y-4 md:space-y-6 2xl:space-y-12 max-w-[90vw]"
         >
-          <h3 className="text-4xl sm:text-6xl md:text-9xl font-black text-white uppercase tracking-tighter leading-none px-4">
+          <h3 className="text-4xl sm:text-6xl md:text-8xl lg:text-9xl 2xl:text-[12rem] font-black text-white uppercase tracking-tighter leading-none px-4 drop-shadow-2xl">
             {employee.name}
           </h3>
           
-          <div className="inline-flex flex-col items-center gap-4 px-8 py-4 bg-white/5 rounded-[32px] border border-white/10">
+          <div className="inline-flex flex-col items-center gap-4 px-10 py-5 bg-white/5 rounded-[40px] border border-white/10 shadow-2xl">
             {isLastCalled ? (
-              <span className="text-brand-primary font-black text-xl md:text-4xl animate-bounce">
+              <span className="text-brand-primary font-black text-2xl md:text-5xl 2xl:text-7xl animate-bounce">
                 (Chamada Encerrada)
               </span>
             ) : (
-              <div className="flex items-center gap-4">
-                <Sparkles size={24} className="text-brand-secondary md:w-10 md:h-10" />
-                <span className="text-sm md:text-2xl font-black uppercase tracking-widest text-white/80">
-                  Próximo na Fila!
+              <div className="flex items-center gap-4 md:gap-8">
+                <Sparkles size={32} className="text-brand-secondary md:w-16 md:h-16 2xl:w-24 2xl:h-24" />
+                <span className="text-lg md:text-4xl 2xl:text-6xl font-black uppercase tracking-widest text-white/90">
+                  Próximo da Fila!
                 </span>
               </div>
             )}
@@ -461,7 +461,7 @@ const CallNotificationPopup = ({ employee, onClose, isAuthenticated, isLastCalle
             animate={{ opacity: 1 }}
             transition={{ delay: 1 }}
             onClick={onClose}
-            className="mt-12 md:mt-20 px-12 py-6 bg-brand-primary text-white font-black uppercase tracking-[0.3em] rounded-full shadow-2xl hover:scale-110 transition-all active:scale-95 text-lg"
+            className="mt-8 md:mt-12 2xl:mt-24 px-16 py-6 md:px-24 md:py-8 bg-brand-primary text-white font-black uppercase tracking-[0.3em] rounded-full shadow-2xl hover:scale-105 transition-all active:scale-95 text-xl md:text-3xl 2xl:text-5xl"
           >
             Entendido
           </motion.button>
