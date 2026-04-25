@@ -3717,38 +3717,6 @@ function AppContent() {
   const [view, setView] = useState<'public' | 'login' | 'admin'>('public');
   const [hasInteracted, setHasInteracted] = useState(false);
   const isFirstCallRef = useRef(true);
-
-  useEffect(() => {
-    const handleInteraction = () => {
-      if (!hasInteracted) {
-        setHasInteracted(true);
-        // Prime speech synthesis on first interaction
-        try {
-          if (window.speechSynthesis) {
-            const utterance = new SpeechSynthesisUtterance('');
-            window.speechSynthesis.speak(utterance);
-          }
-        } catch (e) {
-          console.error("Erro ao primar áudio:", e);
-        }
-      }
-    };
-    window.addEventListener('click', handleInteraction);
-    window.addEventListener('touchstart', handleInteraction);
-    return () => {
-      window.removeEventListener('click', handleInteraction);
-      window.removeEventListener('touchstart', handleInteraction);
-    };
-  }, [hasInteracted]);
-
-  useEffect(() => {
-    if (view === 'public' && !hasInteracted && isAuthReady) {
-      const timer = setTimeout(() => {
-        addNotification("Toque na tela ou interaja para ativar o sistema de voz das chamadas.", "info");
-      }, 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [view, hasInteracted, isAuthReady]);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [currentUserRole, setCurrentUserRole] = useState<'admin' | 'coordinator' | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -3773,6 +3741,15 @@ function AppContent() {
   const [calledEmployeeData, setCalledEmployeeData] = useState<Employee | null>(null);
   const [showCallPopup, setShowCallPopup] = useState(false);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
+
+  const addNotification = (message: string, type: 'success' | 'error' | 'info' = 'info', description?: string) => {
+    const id = Math.random().toString(36).substr(2, 9);
+    setNotifications(prev => [...prev, { id, message, type, description }]);
+    const duration = type === 'error' ? 8000 : 4000;
+    setTimeout(() => {
+      setNotifications(prev => prev.filter(n => n.id !== id));
+    }, duration);
+  };
 
   const speak = (text: string, force = false) => {
     if (!settings.voiceCallEnabled && !force) return;
@@ -3829,6 +3806,38 @@ function AppContent() {
   };
 
   useEffect(() => {
+    const handleInteraction = () => {
+      if (!hasInteracted) {
+        setHasInteracted(true);
+        // Prime speech synthesis on first interaction
+        try {
+          if (window.speechSynthesis) {
+            const utterance = new SpeechSynthesisUtterance('');
+            window.speechSynthesis.speak(utterance);
+          }
+        } catch (e) {
+          console.error("Erro ao primar áudio:", e);
+        }
+      }
+    };
+    window.addEventListener('click', handleInteraction);
+    window.addEventListener('touchstart', handleInteraction);
+    return () => {
+      window.removeEventListener('click', handleInteraction);
+      window.removeEventListener('touchstart', handleInteraction);
+    };
+  }, [hasInteracted]);
+
+  useEffect(() => {
+    if (view === 'public' && !hasInteracted && isAuthReady) {
+      const timer = setTimeout(() => {
+        addNotification("Toque na tela ou interaja para ativar o sistema de voz das chamadas.", "info");
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [view, hasInteracted, isAuthReady]);
+
+  useEffect(() => {
     const handleOnline = () => {
       setIsOffline(false);
       addNotification('Você está online agora. Os dados serão sincronizados.', 'success');
@@ -3846,15 +3855,6 @@ function AppContent() {
       window.removeEventListener('offline', handleOffline);
     };
   }, []);
-
-  const addNotification = (message: string, type: 'success' | 'error' | 'info' = 'info', description?: string) => {
-    const id = Math.random().toString(36).substr(2, 9);
-    setNotifications(prev => [...prev, { id, message, type, description }]);
-    const duration = type === 'error' ? 8000 : 4000;
-    setTimeout(() => {
-      setNotifications(prev => prev.filter(n => n.id !== id));
-    }, duration);
-  };
 
   // Confetti trigger
   useEffect(() => {
