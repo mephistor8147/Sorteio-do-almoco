@@ -357,85 +357,119 @@ const AdminTabLoader = ({ isLoading, children, skeleton: SkeletonComponent }: { 
 const CallNotificationPopup = ({ employee, onClose, isAuthenticated, isLastCalled }: { employee: Employee, onClose: () => void, isAuthenticated: boolean, isLastCalled: boolean }) => {
   return (
     <motion.div
-      initial={{ opacity: 0, scale: 0.8, y: 50 }}
-      animate={{ opacity: 1, scale: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.8, y: 50 }}
-      className="fixed inset-0 z-[300] flex items-center justify-center px-4 pointer-events-none"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[500] flex items-center justify-center bg-brand-bg select-none"
     >
-      <motion.div 
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        className="absolute inset-0 bg-brand-bg/90 pointer-events-auto"
-        onClick={onClose}
-      />
-      <div className="w-full max-w-sm bg-[#121814] p-8 rounded-[48px] shadow-[0_32px_64px_-16px_rgba(0,0,0,0.5)] border border-white/20 flex flex-col items-center gap-6 relative pointer-events-auto overflow-hidden group">
-        <div className="absolute top-0 left-0 w-full h-1.5 bg-brand-secondary/20 overflow-hidden">
+      {/* Solid background for total focus */}
+      <div className="absolute inset-0 bg-[#0a0f0c] pointer-events-none" />
+      
+      {/* Fullscreen Container */}
+      <div className="w-full h-full flex flex-col items-center justify-center p-6 md:p-20 relative z-10 overflow-hidden">
+        
+        {/* Giant progress bar at the top */}
+        <div className="absolute top-0 left-0 w-full h-2 bg-white/5">
           <motion.div 
             initial={{ width: '0%' }}
             animate={{ width: '100%' }}
             transition={{ duration: 8, ease: 'linear' }}
-            className="h-full bg-brand-secondary"
+            className="h-full bg-brand-primary shadow-[0_0_20px_rgba(34,197,94,0.5)]"
           />
         </div>
 
+        {/* Close Button (Icon) */}
         <button 
           onClick={onClose}
-          className="absolute top-6 right-6 text-white/30 hover:text-white transition-colors"
+          className="absolute top-8 right-8 text-white/30 hover:text-white transition-colors p-4 md:p-6"
         >
-          <X size={20} />
+          <X className="w-8 h-8 md:w-12 md:h-12" />
         </button>
 
-        <div className="space-y-1 text-center mb-2">
-          <span className="text-brand-secondary text-[10px] font-black uppercase tracking-[0.4em] block">Chamando Agora</span>
-          <h2 className="text-2xl font-black text-white uppercase tracking-tight">Próximo na Fila</h2>
-        </div>
+        {/* Announcement Header */}
+        <motion.div 
+          initial={{ y: -20, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ delay: 0.2 }}
+          className="flex flex-col items-center gap-4 mb-8 md:mb-12"
+        >
+          <span className="text-xs md:text-xl font-black uppercase tracking-[0.5em] text-brand-secondary animate-pulse">
+            {isLastCalled ? "Finalizando Chamada" : "Chamada Prioritária"}
+          </span>
+          <div className="w-24 md:w-48 h-1.5 bg-brand-secondary/30 rounded-full" />
+        </motion.div>
 
-        <div className="relative">
-          <div className="w-32 h-32 rounded-[40px] overflow-hidden border-4 border-brand-primary shadow-2xl relative z-10 bg-white/5">
+        {/* Giant Photo Area */}
+        <motion.div 
+          initial={{ scale: 0.8, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ type: "spring", damping: 12 }}
+          className="relative mb-8 md:mb-16"
+        >
+          <div className="w-48 h-48 sm:w-64 sm:h-64 md:w-96 md:h-96 rounded-[40px] md:rounded-[80px] overflow-hidden border-4 border-brand-primary shadow-[0_0_80px_rgba(34,197,94,0.3)] relative z-10 bg-brand-card">
             {employee.photoUrl ? (
               <img src={employee.photoUrl} alt={employee.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
             ) : (
               <div className="w-full h-full flex items-center justify-center bg-brand-primary/10 text-brand-primary">
-                <UserIcon size={48} />
+                <UserIcon className="w-24 h-24 md:w-40 md:h-40" />
               </div>
             )}
           </div>
+          
+          {/* Giant Position Badge */}
           <motion.div 
-            animate={{ scale: [1, 1.2, 1] }}
-            transition={{ duration: 2, repeat: Infinity }}
-            className="absolute -top-4 -right-4 w-12 h-12 bg-white text-brand-bg rounded-2xl flex items-center justify-center font-black text-lg shadow-xl z-20 border-2 border-brand-primary"
+            initial={{ x: 20, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            transition={{ delay: 0.4 }}
+            className="absolute -top-6 -right-6 w-16 h-16 md:w-32 md:h-32 bg-white text-brand-bg rounded-[20px] md:rounded-[40px] flex items-center justify-center font-black text-2xl md:text-5xl shadow-2xl z-20 border-4 md:border-8 border-brand-primary"
           >
             {employee.position}º
           </motion.div>
-          <div className="absolute inset-0 bg-brand-primary/20 blur-3xl rounded-full scale-150 opacity-50" />
-        </div>
+        </motion.div>
 
-        <div className="text-center space-y-2">
-          <h3 className="text-3xl font-black text-white uppercase tracking-tight line-clamp-2">
+        {/* Name and Status Text */}
+        <motion.div 
+          initial={{ y: 20, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ delay: 0.3 }}
+          className="text-center space-y-4 md:space-y-8 max-w-4xl"
+        >
+          <h3 className="text-4xl sm:text-6xl md:text-9xl font-black text-white uppercase tracking-tighter leading-none px-4">
             {employee.name}
           </h3>
-          <div className="flex flex-col items-center justify-center gap-2 px-4 py-2 bg-white/5 rounded-2xl border border-white/5">
+          
+          <div className="inline-flex flex-col items-center gap-4 px-8 py-4 bg-white/5 rounded-[32px] border border-white/10">
             {isLastCalled ? (
-              <span className="text-brand-primary font-black animate-bounce inline-block text-sm">(Chamada Encerrada)</span>
+              <span className="text-brand-primary font-black text-xl md:text-4xl animate-bounce">
+                (Chamada Encerrada)
+              </span>
             ) : (
-              <div className="flex items-center gap-2">
-                <Sparkles size={14} className="text-brand-secondary" />
-                <span className="text-[10px] font-black uppercase tracking-widest text-white/60">Prepare seu prato!</span>
+              <div className="flex items-center gap-4">
+                <Sparkles size={24} className="text-brand-secondary md:w-10 md:h-10" />
+                <span className="text-sm md:text-2xl font-black uppercase tracking-widest text-white/80">
+                  Próximo na Fila!
+                </span>
               </div>
             )}
           </div>
-        </div>
+        </motion.div>
 
+        {/* Close Button (Admin Only) */}
         {isAuthenticated && (
-          <button 
+          <motion.button 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 1 }}
             onClick={onClose}
-            className="w-full py-5 bg-brand-primary text-white font-black uppercase tracking-[0.2em] rounded-3xl shadow-xl hover:scale-105 transition-all active:scale-95 text-xs"
+            className="mt-12 md:mt-20 px-12 py-6 bg-brand-primary text-white font-black uppercase tracking-[0.3em] rounded-full shadow-2xl hover:scale-110 transition-all active:scale-95 text-lg"
           >
             Entendido
-          </button>
+          </motion.button>
         )}
       </div>
+
+      {/* Decorative Glow */}
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full bg-brand-primary/5 blur-[120px] rounded-full pointer-events-none" />
     </motion.div>
   );
 };
