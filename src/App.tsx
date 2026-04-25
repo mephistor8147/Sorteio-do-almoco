@@ -354,7 +354,7 @@ const AdminTabLoader = ({ isLoading, children, skeleton: SkeletonComponent }: { 
 
 // --- Components ---
 
-const CallNotificationPopup = ({ employee, onClose, isAuthenticated }: { employee: Employee, onClose: () => void, isAuthenticated: boolean }) => {
+const CallNotificationPopup = ({ employee, onClose, isAuthenticated, isLastCalled }: { employee: Employee, onClose: () => void, isAuthenticated: boolean, isLastCalled: boolean }) => {
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.8, y: 50 }}
@@ -366,10 +366,10 @@ const CallNotificationPopup = ({ employee, onClose, isAuthenticated }: { employe
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="absolute inset-0 bg-brand-bg/60 backdrop-blur-sm pointer-events-auto"
+        className="absolute inset-0 bg-brand-bg/90 pointer-events-auto"
         onClick={onClose}
       />
-      <div className="w-full max-w-sm glass p-8 rounded-[48px] shadow-[0_32px_64px_-16px_rgba(0,0,0,0.5)] border border-white/20 flex flex-col items-center gap-6 relative pointer-events-auto bg-brand-bg/95 backdrop-blur-2xl overflow-hidden group">
+      <div className="w-full max-w-sm bg-[#121814] p-8 rounded-[48px] shadow-[0_32px_64px_-16px_rgba(0,0,0,0.5)] border border-white/20 flex flex-col items-center gap-6 relative pointer-events-auto overflow-hidden group">
         <div className="absolute top-0 left-0 w-full h-1.5 bg-brand-secondary/20 overflow-hidden">
           <motion.div 
             initial={{ width: '0%' }}
@@ -415,9 +415,15 @@ const CallNotificationPopup = ({ employee, onClose, isAuthenticated }: { employe
           <h3 className="text-3xl font-black text-white uppercase tracking-tight line-clamp-2">
             {employee.name}
           </h3>
-          <div className="flex items-center justify-center gap-2 px-4 py-2 bg-white/5 rounded-2xl border border-white/5">
-            <Sparkles size={14} className="text-brand-secondary" />
-            <span className="text-[10px] font-black uppercase tracking-widest text-white/60">Prepare seu prato!</span>
+          <div className="flex flex-col items-center justify-center gap-2 px-4 py-2 bg-white/5 rounded-2xl border border-white/5">
+            {isLastCalled ? (
+              <span className="text-brand-primary font-black animate-bounce inline-block text-sm">(Chamada Encerrada)</span>
+            ) : (
+              <div className="flex items-center gap-2">
+                <Sparkles size={14} className="text-brand-secondary" />
+                <span className="text-[10px] font-black uppercase tracking-widest text-white/60">Prepare seu prato!</span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -3299,7 +3305,7 @@ const AdminPanel = ({
   );
 };
 
-const HeroCard = ({ queueCount, settings, calledEmployee }: { queueCount: number, settings: AppSettings, calledEmployee: Employee | null }) => {
+const HeroCard = ({ queueCount, settings, calledEmployee, isLastCalled }: { queueCount: number, settings: AppSettings, calledEmployee: Employee | null, isLastCalled: boolean }) => {
   const [time, setTime] = useState(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
 
   useEffect(() => {
@@ -3359,7 +3365,7 @@ const HeroCard = ({ queueCount, settings, calledEmployee }: { queueCount: number
               exit={{ opacity: 0, x: 20, scale: 0.9 }}
               className="flex-shrink-0 w-full md:w-auto"
             >
-              <div className="glass p-6 md:p-8 rounded-[32px] border-2 border-brand-primary/30 relative overflow-hidden group">
+              <div className="bg-[#121814] p-6 md:p-8 rounded-[32px] border-2 border-brand-primary/30 relative overflow-hidden group shadow-2xl">
                 <div className="absolute top-0 left-0 w-full h-1 bg-brand-primary" />
                 <div className="flex items-center gap-6">
                   <div className="relative">
@@ -3384,7 +3390,9 @@ const HeroCard = ({ queueCount, settings, calledEmployee }: { queueCount: number
                       {calledEmployee.name}
                     </h4>
                     <p className="text-[10px] text-white/40 font-bold uppercase tracking-widest mt-1">
-                      Próximo da Fila
+                      {isLastCalled ? (
+                        <span className="text-brand-primary font-black animate-bounce inline-block">(Chamada Encerrada)</span>
+                      ) : "Próximo da Fila"}
                     </p>
                   </div>
                 </div>
@@ -4634,6 +4642,7 @@ function AppContent() {
             employee={calledEmployeeData} 
             onClose={() => setShowCallPopup(false)} 
             isAuthenticated={isAuthenticated}
+            isLastCalled={queue.filter(e => e.isActive).every(e => e.position <= calledEmployeeData.position)}
           />
         )}
       </AnimatePresence>
@@ -4746,6 +4755,7 @@ function AppContent() {
                 queueCount={queue.filter(e => e.isActive).length} 
                 settings={settings} 
                 calledEmployee={showCallPopup ? calledEmployeeData : null}
+                isLastCalled={showCallPopup && calledEmployeeData ? queue.filter(e => e.isActive).every(e => e.position <= calledEmployeeData.position) : false}
               />
             </div>
 
