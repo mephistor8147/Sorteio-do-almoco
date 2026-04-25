@@ -35,6 +35,7 @@ import {
   Printer,
   FileDown,
   Volume2,
+  VolumeX,
   Share2,
   RefreshCw
 } from 'lucide-react';
@@ -474,7 +475,13 @@ const CallNotificationPopup = ({ employee, onClose, isAuthenticated, isLastCalle
   );
 };
 
-const Header = ({ onAdminClick, isAuthenticated, settings }: { onAdminClick: () => void, isAuthenticated: boolean, settings: AppSettings }) => (
+const Header = ({ onAdminClick, isAuthenticated, settings, localVoiceEnabled, onToggleVoice }: { 
+  onAdminClick: () => void, 
+  isAuthenticated: boolean, 
+  settings: AppSettings,
+  localVoiceEnabled: boolean,
+  onToggleVoice: () => void
+}) => (
   <header className="px-4 md:px-6 py-4 md:py-8 flex items-center justify-between sticky top-0 z-50 bg-brand-bg/80 backdrop-blur-md">
     <div className="flex items-center gap-2 md:gap-3">
       <div className="w-8 h-8 md:w-10 md:h-10 bg-brand-primary rounded-full flex items-center justify-center shadow-lg shadow-brand-primary/20 shrink-0">
@@ -489,6 +496,14 @@ const Header = ({ onAdminClick, isAuthenticated, settings }: { onAdminClick: () 
     </div>
     
     <div className="flex items-center gap-2 md:gap-3 shrink-0">
+      <button 
+        onClick={onToggleVoice}
+        className={`w-8 h-8 md:w-10 md:h-10 rounded-xl md:rounded-2xl glass flex items-center justify-center transition-all ${localVoiceEnabled ? 'text-brand-secondary' : 'text-white/30 hover:text-white/60'}`}
+        title={localVoiceEnabled ? "Desativar chamada por voz" : "Ativar chamada por voz"}
+      >
+        {localVoiceEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
+      </button>
+
       <button 
         onClick={onAdminClick}
         className={`w-8 h-8 md:w-10 md:h-10 rounded-xl md:rounded-2xl glass flex items-center justify-center transition-all ${isAuthenticated ? 'text-brand-secondary' : 'text-white/70 hover:text-white'}`}
@@ -1930,7 +1945,14 @@ const AdminPanel = ({
                               </span>
                             </div>
                           </div>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-1 md:gap-1.5 shrink-0">
+                            <button 
+                              onClick={() => speak(`Teste de áudio. Próximo na fila: ${emp.name}`, true)}
+                              className="w-8 h-8 md:w-9 md:h-9 rounded-lg md:rounded-xl bg-white/5 text-white/40 flex items-center justify-center hover:bg-brand-secondary hover:text-brand-bg transition-all"
+                              title="Testar Chamada de Voz"
+                            >
+                              <Volume2 size={14} className="md:w-4 md:h-4" />
+                            </button>
                             <button 
                               onClick={() => {
                                 setEditingId(emp.id);
@@ -1938,23 +1960,24 @@ const AdminPanel = ({
                                 setNewPhotoUrl(emp.photoUrl || '');
                                 window.scrollTo({ top: 0, behavior: 'smooth' });
                               }}
-                              className="w-10 h-10 rounded-xl bg-white/5 text-white/40 flex items-center justify-center hover:bg-brand-primary hover:text-white transition-all"
+                              className="w-8 h-8 md:w-9 md:h-9 rounded-lg md:rounded-xl bg-white/5 text-white/40 flex items-center justify-center hover:bg-brand-primary hover:text-white transition-all"
                               title="Editar"
                             >
-                              <Edit2 size={16} />
+                              <Edit2 size={14} className="md:w-4 md:h-4" />
                             </button>
                             <button 
                               onClick={() => onToggleActive(emp.id, emp.isActive)}
-                              className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${emp.isActive ? 'bg-green-500/10 text-green-400 hover:bg-green-500 hover:text-white' : 'bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white'}`}
+                              className={`w-8 h-8 md:w-9 md:h-9 rounded-lg md:rounded-xl flex items-center justify-center transition-all ${emp.isActive ? 'bg-green-500/10 text-green-400 hover:bg-green-500 hover:text-white' : 'bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white'}`}
                               title={emp.isActive ? 'Desativar' : 'Ativar'}
                             >
-                              {emp.isActive ? <Check size={16} /> : <X size={16} />}
+                              {emp.isActive ? <Check size={14} className="md:w-4 md:h-4" /> : <X size={14} className="md:w-4 md:h-4" />}
                             </button>
                             <button 
                               onClick={() => onRemove(emp.id)}
-                              className="w-10 h-10 rounded-xl bg-red-500/10 text-red-500 flex items-center justify-center md:opacity-0 group-hover:opacity-100 transition-all hover:bg-red-500 hover:text-white"
+                              className="w-8 h-8 md:w-9 md:h-9 rounded-lg md:rounded-xl bg-red-500/10 text-red-500 flex items-center justify-center lg:opacity-0 group-hover:opacity-100 transition-all hover:bg-red-500 hover:text-white"
+                              title="Remover"
                             >
-                              <Trash2 size={14} />
+                              <Trash2 size={14} className="md:w-4 md:h-4" />
                             </button>
                           </div>
                         </motion.div>
@@ -3741,6 +3764,17 @@ function AppContent() {
   const [calledEmployeeData, setCalledEmployeeData] = useState<Employee | null>(null);
   const [showCallPopup, setShowCallPopup] = useState(false);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
+  const [localVoiceEnabled, setLocalVoiceEnabled] = useState(() => {
+    const saved = localStorage.getItem('localVoiceEnabled');
+    return saved !== null ? saved === 'true' : true;
+  });
+
+  const toggleLocalVoice = () => {
+    const newValue = !localVoiceEnabled;
+    setLocalVoiceEnabled(newValue);
+    localStorage.setItem('localVoiceEnabled', String(newValue));
+    addNotification(newValue ? 'Chamada por voz ativada' : 'Chamada por voz desativada', 'info');
+  };
 
   const addNotification = (message: string, type: 'success' | 'error' | 'info' = 'info', description?: string) => {
     const id = Math.random().toString(36).substr(2, 9);
@@ -3752,6 +3786,7 @@ function AppContent() {
   };
 
   const speak = (text: string, force = false) => {
+    if (!localVoiceEnabled) return;
     if (!settings.voiceCallEnabled && !force) return;
     
     try {
@@ -3783,10 +3818,19 @@ function AppContent() {
           }
           
           utterance.onerror = (event) => {
+            if (event.error === 'interrupted') {
+              // Silently ignore interrupted errors as they are often expected when a new call comes in
+              return;
+            }
             console.error('Erro na síntese de voz:', event.error);
           };
 
-          window.speechSynthesis.speak(utterance);
+          if (window.speechSynthesis.speaking) {
+             window.speechSynthesis.cancel();
+             setTimeout(() => window.speechSynthesis.speak(utterance), 50);
+          } else {
+             window.speechSynthesis.speak(utterance);
+          }
         }, 150);
       };
 
@@ -4824,6 +4868,8 @@ function AppContent() {
             onAdminClick={() => setView(isAuthenticated ? 'admin' : 'login')} 
             isAuthenticated={isAuthenticated}
             settings={settings}
+            localVoiceEnabled={localVoiceEnabled}
+            onToggleVoice={toggleLocalVoice}
           />
           
           {isOffline && (
