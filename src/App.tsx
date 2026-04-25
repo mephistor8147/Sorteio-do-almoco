@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   Search, 
   Menu as MenuIcon, 
@@ -709,6 +709,10 @@ const AdminPanel = ({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isHeroUploading, setIsHeroUploading] = useState(false);
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
+  const [activeCameraType, setActiveCameraType] = useState<'employees' | 'admins' | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   
   const [adminName, setAdminName] = useState('');
   const [adminUsername, setAdminUsername] = useState('');
@@ -733,26 +737,38 @@ const AdminPanel = ({
         return;
       }
 
-      // Cancelar qualquer fala em andamento
-      window.speechSynthesis.cancel();
-      
-      // Delay pequeno para garantir que o cancelamento foi processado
-      setTimeout(() => {
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = 'pt-BR';
-        utterance.rate = 1.0; 
-        utterance.pitch = 1;
-        utterance.volume = 1;
+      // Função para realizar a fala
+      const performSpeech = () => {
+        // Cancelar qualquer fala em andamento
+        window.speechSynthesis.cancel();
         
-        // Tentar encontrar uma voz pt-BR
-        const voices = window.speechSynthesis.getVoices();
-        const ptBRVoice = voices.find(v => v.lang === 'pt-BR' || v.lang === 'pt_BR');
-        if (ptBRVoice) {
-          utterance.voice = ptBRVoice;
-        }
-        
-        window.speechSynthesis.speak(utterance);
-      }, 100);
+        // Delay pequeno para garantir que o cancelamento foi processado
+        setTimeout(() => {
+          const utterance = new SpeechSynthesisUtterance(text);
+          utterance.lang = 'pt-BR';
+          utterance.rate = 1.0; 
+          utterance.pitch = 1;
+          utterance.volume = 1;
+          
+          const voices = window.speechSynthesis.getVoices();
+          const ptBRVoice = voices.find(v => v.lang === 'pt-BR' || v.lang === 'pt_BR');
+          if (ptBRVoice) {
+            utterance.voice = ptBRVoice;
+          }
+          
+          window.speechSynthesis.speak(utterance);
+        }, 100);
+      };
+
+      // Se as vozes não foram carregadas ainda, esperar pelo evento
+      if (window.speechSynthesis.getVoices().length === 0) {
+        window.speechSynthesis.onvoiceschanged = () => {
+          performSpeech();
+          window.speechSynthesis.onvoiceschanged = null; // Remover após rodar uma vez
+        };
+      } else {
+        performSpeech();
+      }
     } catch (err) {
       console.error('Erro ao falar:', err);
     }
@@ -1178,23 +1194,62 @@ const AdminPanel = ({
   };
 
 
+  const uploadFile = async (file: File, type: 'employees' | 'admins' | 'settings') => {
+    // 5MB Limit
+    if (file.size > 5 * 1024 * 1024) {
+      addNotification("Arquivo muito grande. O limite é 5MB.", 'error');
+      return null;
+    }
+
+    try {
+      const storageRef = ref(storage, `${type}/${Date.now()}-${file.name}`);
+      const snapshot = await uploadBytes(storageRef, file);
+      const downloadURL = await getDownloadURL(snapshot.ref);
+      return downloadURL;
+    } catch (error: any) {
+      console.error(`Error uploading to ${type}:`, error);
+      addNotification("Erro ao fazer upload da imagem.", 'error', error.message);
+      return null;
+    }
+  };
+
   const handleAdminFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setIsAdminUploading(true);
-    try {
-      const storageRef = ref(storage, `admins/${Date.now()}-${file.name}`);
-      const snapshot = await uploadBytes(storageRef, file);
-      const downloadURL = await getDownloadURL(snapshot.ref);
-      setAdminPhotoUrl(downloadURL);
+    const url = await uploadFile(file, 'admins');
+    if (url) {
+      setAdminPhotoUrl(url);
       addNotification("Foto do administrador carregada!", 'success');
-    } catch (error: any) {
-      console.error("Error uploading admin photo:", error);
-      addNotification("Erro ao fazer upload da foto.", 'error', error.message);
-    } finally {
-      setIsAdminUploading(false);
     }
+    setIsAdminUploading(false);
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement> | File) => {
+    const file = e instanceof File ? e : e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    const url = await uploadFile(file, 'employees');
+    if (url) {
+      setNewPhotoUrl(url);
+      addNotification("Foto carregada com sucesso!", 'success');
+    }
+    setIsUploading(false);
+  };
+
+  const handleHeroBackgroundUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsHeroUploading(true);
+    const url = await uploadFile(file, 'settings');
+    if (url) {
+      setTempSettings({ ...tempSettings, heroBackgroundImage: url });
+      addNotification("Imagem de fundo carregada!", 'success');
+    }
+    setIsHeroUploading(false);
   };
 
   const handleShuffleClick = async () => {
@@ -1208,41 +1263,74 @@ const AdminPanel = ({
     }
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setIsUploading(true);
+  const startCamera = async (type: 'employees' | 'admins') => {
     try {
-      const storageRef = ref(storage, `employees/${Date.now()}-${file.name}`);
-      const snapshot = await uploadBytes(storageRef, file);
-      const downloadURL = await getDownloadURL(snapshot.ref);
-      setNewPhotoUrl(downloadURL);
-      addNotification("Foto carregada com sucesso!", 'success');
-    } catch (error: any) {
-      console.error("Error uploading employee photo:", error);
-      addNotification("Erro ao fazer upload da foto.", 'error', error.message);
-    } finally {
-      setIsUploading(false);
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { 
+          facingMode: 'user',
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        } 
+      });
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        setIsCameraOpen(true);
+        setActiveCameraType(type);
+      }
+    } catch (err) {
+      console.error('Error starting camera:', err);
+      addNotification("Erro ao acessar a câmera. Verifique as permissões.", "error");
     }
   };
 
-  const handleHeroBackgroundUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const stopCamera = () => {
+    if (videoRef.current && videoRef.current.srcObject) {
+      const stream = videoRef.current.srcObject as MediaStream;
+      stream.getTracks().forEach(track => track.stop());
+      setIsCameraOpen(false);
+      setActiveCameraType(null);
+    }
+  };
 
-    setIsHeroUploading(true);
-    try {
-      const storageRef = ref(storage, `settings/${Date.now()}-${file.name}`);
-      const snapshot = await uploadBytes(storageRef, file);
-      const downloadURL = await getDownloadURL(snapshot.ref);
-      setTempSettings({ ...tempSettings, heroBackgroundImage: downloadURL });
-      addNotification("Imagem de fundo carregada!", 'success');
-    } catch (error: any) {
-      console.error("Error uploading hero background:", error);
-      addNotification("Erro ao fazer upload da imagem.", 'error', error.message);
-    } finally {
-      setIsHeroUploading(false);
+  const capturePhoto = async () => {
+    if (videoRef.current && canvasRef.current && activeCameraType) {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      
+      const size = Math.min(video.videoWidth, video.videoHeight);
+      const startX = (video.videoWidth - size) / 2;
+      const startY = (video.videoHeight - size) / 2;
+      
+      canvas.width = 400; 
+      canvas.height = 400;
+      
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(video, startX, startY, size, size, 0, 0, 400, 400);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+        
+        try {
+          const response = await fetch(dataUrl);
+          const blob = await response.blob();
+          const file = new File([blob], `camera-${Date.now()}.jpg`, { type: 'image/jpeg' });
+          
+          if (activeCameraType === 'employees') {
+            await handleFileUpload(file);
+          } else {
+            setIsAdminUploading(true);
+            const url = await uploadFile(file, 'admins');
+            if (url) {
+              setAdminPhotoUrl(url);
+              addNotification("Foto do administrador capturada!", 'success');
+            }
+            setIsAdminUploading(false);
+          }
+          stopCamera();
+        } catch (err) {
+          console.error('Error processing captured photo:', err);
+          addNotification('Erro ao processar foto capturada.', 'error');
+        }
+      }
     }
   };
 
@@ -1663,65 +1751,101 @@ const AdminPanel = ({
                   <Users className="text-brand-secondary" size={20} /> {editingId ? 'Editar Funcionário' : 'Adicionar Funcionário'}
                 </h3>
                 <div className="space-y-4">
-                  <div className="flex flex-col sm:flex-row gap-3">
-                    <div className="relative group">
-                      <input 
-                        type="file"
-                        accept="image/*"
-                        onChange={handleFileUpload}
-                        className="hidden"
-                        id="photo-upload"
+                  {isCameraOpen ? (
+                    <div className="relative rounded-[32px] overflow-hidden bg-black aspect-video">
+                      <video 
+                        ref={videoRef} 
+                        autoPlay 
+                        playsInline 
+                        className="w-full h-full object-cover mirror"
                       />
-                      <label 
-                        htmlFor="photo-upload"
-                        className="w-14 h-14 bg-white/5 border border-white/10 rounded-2xl flex items-center justify-center text-white/40 hover:text-brand-secondary hover:border-brand-secondary/50 cursor-pointer transition-all overflow-hidden"
-                      >
-                        {newPhotoUrl ? (
-                          <img src={newPhotoUrl} alt="Preview" className="w-full h-full object-cover" />
-                        ) : (
-                          isUploading ? <div className="animate-spin rounded-full h-5 w-5 border-2 border-white/20 border-t-brand-secondary" /> : <Camera size={24} />
-                        )}
-                      </label>
+                      <canvas ref={canvasRef} className="hidden" />
+                      <div className="absolute bottom-6 inset-x-0 flex justify-center items-center gap-4">
+                        <button
+                          onClick={stopCamera}
+                          className="w-12 h-12 rounded-full bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-white hover:bg-red-500 transition-all"
+                        >
+                          <X size={20} />
+                        </button>
+                        <button
+                          onClick={capturePhoto}
+                          className="w-16 h-16 rounded-full bg-brand-primary flex items-center justify-center text-white shadow-xl shadow-brand-primary/40 hover:scale-105 active:scale-95 transition-all"
+                        >
+                          <Camera size={28} />
+                        </button>
+                      </div>
                     </div>
-                    <input 
-                      type="text"
-                      value={newName}
-                      onChange={(e) => setNewName(e.target.value)}
-                      placeholder="Nome do funcionário..."
-                      className="flex-1 bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all text-sm md:text-base"
-                    />
-                    <div className="flex gap-2">
-                      <button 
-                        onClick={() => {
-                          if (newName.trim()) {
-                            if (editingId) {
-                              onUpdateEmployee(editingId, newName, newPhotoUrl || undefined);
-                              setEditingId(null);
-                            } else {
-                              onAdd(newName, newPhotoUrl || undefined);
-                            }
-                            setNewName('');
-                            setNewPhotoUrl('');
-                          }
-                        }}
-                        className="h-14 flex-1 sm:w-14 bg-brand-primary rounded-2xl flex items-center justify-center text-white shadow-lg shadow-brand-primary/20 hover:scale-105 active:scale-95 transition-all"
-                      >
-                        {editingId ? <Check size={24} /> : <Plus size={24} />}
-                      </button>
-                      {editingId && (
+                  ) : (
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      <div className="flex gap-2">
+                        <div className="relative group">
+                          <input 
+                            type="file"
+                            accept="image/*"
+                            onChange={handleFileUpload}
+                            className="hidden"
+                            id="photo-upload"
+                          />
+                          <label 
+                            htmlFor="photo-upload"
+                            className="w-14 h-14 bg-white/5 border border-white/10 rounded-2xl flex items-center justify-center text-white/40 hover:text-brand-secondary hover:border-brand-secondary/50 cursor-pointer transition-all overflow-hidden"
+                            title="Upload Foto"
+                          >
+                            {newPhotoUrl ? (
+                              <img src={newPhotoUrl} alt="Preview" className="w-full h-full object-cover" />
+                            ) : (
+                              isUploading ? <div className="animate-spin rounded-full h-5 w-5 border-2 border-white/20 border-t-brand-secondary" /> : <Upload size={24} />
+                            )}
+                          </label>
+                        </div>
+                        <button
+                          onClick={() => startCamera('employees')}
+                          className="w-14 h-14 bg-white/5 border border-white/10 rounded-2xl flex items-center justify-center text-white/40 hover:text-brand-primary hover:border-brand-primary/50 transition-all"
+                          title="Tirar Foto"
+                        >
+                          <Camera size={24} />
+                        </button>
+                      </div>
+                      <input 
+                        type="text"
+                        value={newName}
+                        onChange={(e) => setNewName(e.target.value)}
+                        placeholder="Nome do funcionário..."
+                        className="flex-1 bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all text-sm md:text-base"
+                      />
+                      <div className="flex gap-2">
                         <button 
                           onClick={() => {
-                            setEditingId(null);
-                            setNewName('');
-                            setNewPhotoUrl('');
+                            if (newName.trim()) {
+                              if (editingId) {
+                                onUpdateEmployee(editingId, newName, newPhotoUrl || undefined);
+                                setEditingId(null);
+                              } else {
+                                onAdd(newName, newPhotoUrl || undefined);
+                              }
+                              setNewName('');
+                              setNewPhotoUrl('');
+                            }
                           }}
-                          className="h-14 w-14 bg-white/5 border border-white/10 rounded-2xl flex items-center justify-center text-white/40 hover:text-red-400 transition-all"
+                          className="h-14 flex-1 sm:w-14 bg-brand-primary rounded-2xl flex items-center justify-center text-white shadow-lg shadow-brand-primary/20 hover:scale-105 active:scale-95 transition-all"
                         >
-                          <X size={24} />
+                          {editingId ? <Check size={24} /> : <Plus size={24} />}
                         </button>
-                      )}
+                        {editingId && (
+                          <button 
+                            onClick={() => {
+                              setEditingId(null);
+                              setNewName('');
+                              setNewPhotoUrl('');
+                            }}
+                            className="h-14 w-14 bg-white/5 border border-white/10 rounded-2xl flex items-center justify-center text-white/40 hover:text-red-400 transition-all"
+                          >
+                            <X size={24} />
+                          </button>
+                        )}
+                      </div>
                     </div>
-                  </div>
+                  )}
                   <div className="flex items-center gap-2">
                     <input 
                       type="text"
@@ -1780,55 +1904,64 @@ const AdminPanel = ({
                   {isLoadingQueue ? (
                     <SkeletonQueue />
                   ) : (
-                    [...queue]
-                      .filter(emp => emp.name.toLowerCase().includes(searchTerm.toLowerCase()))
-                      .sort((a, b) => a.name.localeCompare(b.name))
-                      .map((emp) => (
-                      <div key={emp.id} className={`glass p-4 md:p-5 rounded-[24px] md:rounded-[32px] flex items-center justify-between group transition-opacity ${!emp.isActive ? 'opacity-50' : ''}`}>
-                        <div className="flex items-center gap-4">
-                          <div className="w-12 h-12 md:w-16 md:h-16 bg-white/5 rounded-xl flex items-center justify-center text-white/40 font-bold text-lg overflow-hidden shrink-0">
-                            {emp.photoUrl ? (
-                              <img src={emp.photoUrl} alt={emp.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                            ) : (
-                              emp.position
-                            )}
+                    <AnimatePresence mode="popLayout">
+                      {[...queue]
+                        .filter(emp => emp.name.toLowerCase().includes(searchTerm.toLowerCase()))
+                        .sort((a, b) => a.name.localeCompare(b.name))
+                        .map((emp) => (
+                        <motion.div 
+                          key={emp.id}
+                          layout
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: emp.isActive ? 1 : 0.5, y: 0 }}
+                          exit={{ opacity: 0, scale: 0.9 }}
+                          className={`glass p-4 md:p-5 rounded-[24px] md:rounded-[32px] flex items-center justify-between group transition-opacity`}
+                        >
+                          <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 md:w-16 md:h-16 bg-white/5 rounded-xl flex items-center justify-center text-white/40 font-bold text-lg overflow-hidden shrink-0">
+                              {emp.photoUrl ? (
+                                <img src={emp.photoUrl} alt={emp.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                              ) : (
+                                emp.position
+                              )}
+                            </div>
+                            <div>
+                              <span className="text-white font-bold uppercase tracking-tight text-sm md:text-base block">{emp.name}</span>
+                              <span className={`text-[8px] font-black uppercase tracking-widest ${emp.isActive ? 'text-green-400' : 'text-red-400'}`}>
+                                {emp.isActive ? 'Ativo no Sorteio' : 'Inativo'}
+                              </span>
+                            </div>
                           </div>
-                          <div>
-                            <span className="text-white font-bold uppercase tracking-tight text-sm md:text-base block">{emp.name}</span>
-                            <span className={`text-[8px] font-black uppercase tracking-widest ${emp.isActive ? 'text-green-400' : 'text-red-400'}`}>
-                              {emp.isActive ? 'Ativo no Sorteio' : 'Inativo'}
-                            </span>
+                          <div className="flex items-center gap-2">
+                            <button 
+                              onClick={() => {
+                                setEditingId(emp.id);
+                                setNewName(emp.name);
+                                setNewPhotoUrl(emp.photoUrl || '');
+                                window.scrollTo({ top: 0, behavior: 'smooth' });
+                              }}
+                              className="w-10 h-10 rounded-xl bg-white/5 text-white/40 flex items-center justify-center hover:bg-brand-primary hover:text-white transition-all"
+                              title="Editar"
+                            >
+                              <Edit2 size={16} />
+                            </button>
+                            <button 
+                              onClick={() => onToggleActive(emp.id, emp.isActive)}
+                              className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${emp.isActive ? 'bg-green-500/10 text-green-400 hover:bg-green-500 hover:text-white' : 'bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white'}`}
+                              title={emp.isActive ? 'Desativar' : 'Ativar'}
+                            >
+                              {emp.isActive ? <Check size={16} /> : <X size={16} />}
+                            </button>
+                            <button 
+                              onClick={() => onRemove(emp.id)}
+                              className="w-10 h-10 rounded-xl bg-red-500/10 text-red-500 flex items-center justify-center md:opacity-0 group-hover:opacity-100 transition-all hover:bg-red-500 hover:text-white"
+                            >
+                              <Trash2 size={14} />
+                            </button>
                           </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <button 
-                            onClick={() => {
-                              setEditingId(emp.id);
-                              setNewName(emp.name);
-                              setNewPhotoUrl(emp.photoUrl || '');
-                              window.scrollTo({ top: 0, behavior: 'smooth' });
-                            }}
-                            className="w-10 h-10 rounded-xl bg-white/5 text-white/40 flex items-center justify-center hover:bg-brand-primary hover:text-white transition-all"
-                            title="Editar"
-                          >
-                            <Edit2 size={16} />
-                          </button>
-                          <button 
-                            onClick={() => onToggleActive(emp.id, emp.isActive)}
-                            className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${emp.isActive ? 'bg-green-500/10 text-green-400 hover:bg-green-500 hover:text-white' : 'bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white'}`}
-                            title={emp.isActive ? 'Desativar' : 'Ativar'}
-                          >
-                            {emp.isActive ? <Check size={16} /> : <X size={16} />}
-                          </button>
-                          <button 
-                            onClick={() => onRemove(emp.id)}
-                            className="w-10 h-10 rounded-xl bg-red-500/10 text-red-500 flex items-center justify-center md:opacity-0 group-hover:opacity-100 transition-all hover:bg-red-500 hover:text-white"
-                          >
-                            <Trash2 size={16} />
-                          </button>
-                        </div>
-                      </div>
-                    ))
+                        </motion.div>
+                      ))}
+                    </AnimatePresence>
                   )}
                 </div>
               </div>
@@ -1840,7 +1973,8 @@ const AdminPanel = ({
         {activeTab === 'lottery' && (
           <AdminTabLoader isLoading={isLoadingSettings} skeleton={<SkeletonSettings />}>
             <div className="space-y-8">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
+                {/* Coluna 1: Sorteio Casual */}
                 <div className="glass p-8 rounded-[40px] space-y-6 text-center relative overflow-hidden">
                 {isShuffling && (
                   <motion.div 
@@ -1902,132 +2036,118 @@ const AdminPanel = ({
                 )}
               </div>
 
-              {/* Sorteio Programado Card */}
-              <div className="glass p-8 rounded-[40px] space-y-6">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-blue-500/10 rounded-2xl flex items-center justify-center text-blue-500">
-                      <Timer size={24} />
-                    </div>
-                    <div className="text-left">
-                      <h3 className="text-lg font-bold uppercase tracking-tight text-white">Sorteio Programado</h3>
-                      <p className="text-white/40 text-[10px] font-medium leading-relaxed">Configuração de sorteio automático.</p>
-                    </div>
-                  </div>
-                  <button 
-                    onClick={() => {
-                      const enabled = !settings.lotteryEnabled;
-                      onUpdateSettings({ 
-                        ...settings, 
-                        lotteryEnabled: enabled,
-                        lotteryEnabledBy: enabled ? currentAdminName : (settings.lotteryEnabledBy || '')
-                      });
-                    }}
-                    className={`w-12 h-6 rounded-full transition-all relative ${settings.lotteryEnabled ? 'bg-green-500' : 'bg-white/10'}`}
-                  >
-                    <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${settings.lotteryEnabled ? 'right-1' : 'left-1'}`} />
-                  </button>
-                </div>
-
-                <div className="space-y-4 pt-2">
-                  <div className="grid grid-cols-7 gap-1">
-                    {['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((day, i) => (
-                      <button
-                        key={i}
-                        onClick={() => {
-                          const newDays = settings.lotteryDays.includes(i)
-                            ? settings.lotteryDays.filter(d => d !== i)
-                            : [...settings.lotteryDays, i].sort();
-                          onUpdateSettings({ ...settings, lotteryDays: newDays });
-                        }}
-                        className={`py-2 rounded-lg text-[10px] font-black transition-all ${
-                          settings.lotteryDays.includes(i)
-                            ? 'bg-brand-secondary text-brand-bg shadow-sm'
-                            : 'bg-white/5 text-white/40 hover:bg-white/10'
-                        }`}
-                      >
-                        {day}
-                      </button>
-                    ))}
-                  </div>
-
-                  <div className="flex items-center gap-3 bg-white/5 border border-white/5 rounded-2xl p-3">
-                    <Clock size={16} className="text-white/20" />
-                    <input 
-                      type="time" 
-                      value={settings.lotteryTime}
-                      onChange={(e) => onUpdateSettings({ ...settings, lotteryTime: e.target.value })}
-                      className="bg-transparent text-white text-xs font-bold focus:outline-none w-full [color-scheme:dark]"
-                    />
-                  </div>
-                </div>
-
-                <div className="bg-blue-500/5 border border-blue-500/10 rounded-2xl p-4">
-                  <p className="text-[10px] text-blue-400/80 leading-relaxed font-medium">
-                    O sorteio automático será realizado nos dias e horários selecionados, seguindo a mesma lógica do sorteio casual.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Histórico de Sorteios na aba Sorteio */}
-              <div className="glass p-8 rounded-[40px] space-y-6">
+              {/* Coluna 2: Sorteio Programado e Histórico */}
+              <div className="space-y-8">
+                {/* Sorteio Programado Card */}
+                <div className="glass p-8 rounded-[40px] space-y-6">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-xl font-bold uppercase tracking-tight flex items-center gap-3">
-                      <Trophy className="text-brand-secondary" size={20} /> Histórico de Sorteios
-                    </h3>
-                    {history.length > 0 && (
-                      <span className="text-[10px] font-black uppercase tracking-widest text-white/40 bg-white/5 px-3 py-1.5 rounded-xl border border-white/10">
-                        Último: {new Date(history[0].timestamp).toLocaleDateString('pt-BR')}
-                      </span>
-                    )}
-                  </div>
-                  <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
-                    {history.length === 0 ? (
-                      <div className="text-center py-12 text-white/20">
-                        <Trophy size={48} className="mx-auto mb-4 opacity-10" />
-                        <p className="text-xs font-black uppercase tracking-widest">Nenhum sorteio realizado</p>
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 bg-blue-500/10 rounded-2xl flex items-center justify-center text-blue-500">
+                        <Timer size={24} />
                       </div>
-                    ) : (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {history.map((item) => (
-                          <div key={item.id} className="bg-white/5 border border-white/10 rounded-2xl p-4 flex items-center justify-between group hover:bg-white/10 transition-all">
-                            <div className="flex items-center gap-4">
-                              <div className="w-10 h-10 rounded-xl bg-brand-secondary/10 overflow-hidden flex items-center justify-center text-brand-secondary shrink-0 border border-white/5">
-                                {item.fullList?.[0]?.photoUrl ? (
-                                  <img src={item.fullList[0].photoUrl} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                                ) : (
-                                  <Trophy size={18} />
-                                )}
-                              </div>
-                              <div>
-                                <div className="flex items-center gap-2">
-                                  <p className="text-orange-400 font-bold text-sm">{item.winnerName}</p>
-                                  {item.type && (
-                                    <span className={`text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-md ${
-                                      item.type === 'automatic' 
-                                        ? 'bg-blue-500/10 text-blue-400' 
-                                        : 'bg-orange-500/10 text-orange-400'
-                                    }`}>
-                                      {item.type === 'automatic' ? 'Automático' : 'Manual'}
-                                    </span>
+                      <div className="text-left">
+                        <h3 className="text-lg font-bold uppercase tracking-tight text-white">Sorteio Programado</h3>
+                        <p className="text-white/40 text-[10px] font-medium leading-relaxed">Configuração de sorteio automático.</p>
+                      </div>
+                    </div>
+                    <button 
+                      onClick={() => {
+                        const enabled = !settings.lotteryEnabled;
+                        onUpdateSettings({ 
+                          ...settings, 
+                          lotteryEnabled: enabled,
+                          lotteryEnabledBy: enabled ? currentAdminName : (settings.lotteryEnabledBy || '')
+                        });
+                      }}
+                      className={`w-12 h-6 rounded-full transition-all relative ${settings.lotteryEnabled ? 'bg-green-500' : 'bg-white/10'}`}
+                    >
+                      <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${settings.lotteryEnabled ? 'right-1' : 'left-1'}`} />
+                    </button>
+                  </div>
+
+                  <div className="space-y-4 pt-2">
+                    <div className="grid grid-cols-7 gap-1">
+                      {['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((day, i) => (
+                        <button
+                          key={i}
+                          onClick={() => {
+                            const newDays = settings.lotteryDays.includes(i)
+                              ? settings.lotteryDays.filter(d => d !== i)
+                              : [...settings.lotteryDays, i].sort();
+                            onUpdateSettings({ ...settings, lotteryDays: newDays });
+                          }}
+                          className={`py-2 rounded-lg text-[10px] font-black transition-all ${
+                            settings.lotteryDays.includes(i)
+                              ? 'bg-brand-secondary text-brand-bg shadow-sm'
+                              : 'bg-white/5 text-white/40 hover:bg-white/10'
+                          }`}
+                        >
+                          {day}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="flex items-center gap-3 bg-white/5 border border-white/5 rounded-2xl p-3">
+                      <Clock size={16} className="text-white/20" />
+                      <input 
+                        type="time" 
+                        value={settings.lotteryTime}
+                        onChange={(e) => onUpdateSettings({ ...settings, lotteryTime: e.target.value })}
+                        className="bg-transparent text-white text-xs font-bold focus:outline-none w-full [color-scheme:dark]"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="bg-blue-500/5 border border-blue-500/10 rounded-2xl p-4">
+                    <p className="text-[10px] text-blue-400/80 leading-relaxed font-medium">
+                      O sorteio automático será realizado nos dias e horários selecionados, seguindo a mesma lógica do sorteio casual.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Histórico de Sorteios na aba Sorteio */}
+                <div className="glass p-8 rounded-[40px] space-y-6">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-xl font-bold uppercase tracking-tight flex items-center gap-3">
+                        <Trophy className="text-brand-secondary" size={20} /> Histórico
+                      </h3>
+                    </div>
+                    <div className="space-y-4 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                      {history.length === 0 ? (
+                        <div className="text-center py-6 text-white/20">
+                          <Trophy size={32} className="mx-auto mb-2 opacity-10" />
+                          <p className="text-[10px] font-black uppercase tracking-widest">Nenhum sorteio</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          {history.slice(0, 5).map((item) => (
+                            <div key={item.id} className="bg-white/5 border border-white/10 rounded-2xl p-3 flex items-center justify-between group hover:bg-white/10 transition-all">
+                              <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-lg bg-brand-secondary/10 overflow-hidden flex items-center justify-center text-brand-secondary shrink-0 border border-white/5">
+                                  {item.fullList?.[0]?.photoUrl ? (
+                                    <img src={item.fullList[0].photoUrl} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                  ) : (
+                                    <Trophy size={14} />
                                   )}
                                 </div>
-                                <p className="text-[10px] text-white/40 font-black uppercase tracking-widest">
-                                  {new Date(item.timestamp).toLocaleString('pt-BR')}
-                                </p>
+                                <div className="min-w-0">
+                                  <p className="text-orange-400 font-bold text-xs truncate uppercase tracking-tight">{item.winnerName}</p>
+                                  <p className="text-[8px] text-white/40 font-black uppercase">
+                                    {new Date(item.timestamp).toLocaleDateString('pt-BR')}
+                                  </p>
+                                </div>
                               </div>
                             </div>
-                            <button 
-                              onClick={() => onDeleteHistoryItem(item.id)}
-                              className="w-8 h-8 rounded-lg flex items-center justify-center text-white/20 hover:bg-red-500 hover:text-white transition-all opacity-0 group-hover:opacity-100"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                          ))}
+                          {history.length > 5 && (
+                            <p className="text-center text-[8px] text-white/20 font-black uppercase tracking-[0.2em] py-2">
+                              + {history.length - 5} registros no histórico completo
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -2501,40 +2621,75 @@ const AdminPanel = ({
                   </div>
                   <div className="space-y-2">
                     <label className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-4">Foto do Administrador</label>
-                    <div className="flex items-center gap-4">
-                      <div className="w-16 h-16 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center overflow-hidden relative group">
-                        {adminPhotoUrl ? (
-                          <>
-                            <img src={adminPhotoUrl} alt="Preview" className="w-full h-full object-cover" />
-                            <button 
-                              onClick={() => setAdminPhotoUrl('')}
-                              className="absolute inset-0 bg-red-500/80 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white"
-                            >
-                              <X size={20} />
-                            </button>
-                          </>
-                        ) : (
-                          <Camera size={24} className="text-white/20" />
-                        )}
-                        {isAdminUploading && (
-                          <div className="absolute inset-0 bg-brand-bg/60 flex items-center justify-center">
-                            <div className="w-5 h-5 border-2 border-brand-primary/30 border-t-brand-primary rounded-full animate-spin" />
-                          </div>
-                        )}
-                      </div>
-                      <label className="flex-1">
-                        <div className="w-full bg-white/5 border border-white/10 border-dashed rounded-2xl py-4 px-6 text-white/40 text-[10px] font-black uppercase tracking-widest text-center cursor-pointer hover:bg-white/10 hover:border-brand-primary/30 transition-all flex items-center justify-center gap-2">
-                          <Upload size={14} />
-                          {adminPhotoUrl ? 'Trocar Foto' : 'Enviar Foto'}
-                        </div>
-                        <input 
-                          type="file"
-                          accept="image/*"
-                          onChange={handleAdminFileUpload}
-                          className="hidden"
+                    {isCameraOpen && activeCameraType === 'admins' ? (
+                      <div className="relative rounded-2xl overflow-hidden bg-black aspect-video">
+                        <video 
+                          ref={videoRef} 
+                          autoPlay 
+                          playsInline 
+                          className="w-full h-full object-cover mirror"
                         />
-                      </label>
-                    </div>
+                        <canvas ref={canvasRef} className="hidden" />
+                        <div className="absolute bottom-4 inset-x-0 flex justify-center items-center gap-3">
+                          <button
+                            onClick={stopCamera}
+                            className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-white hover:bg-red-500 transition-all"
+                          >
+                            <X size={18} />
+                          </button>
+                          <button
+                            onClick={capturePhoto}
+                            className="w-12 h-12 rounded-full bg-brand-primary flex items-center justify-center text-white shadow-xl shadow-brand-primary/40 hover:scale-105 active:scale-95 transition-all"
+                          >
+                            <Camera size={24} />
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-4">
+                        <div className="w-16 h-16 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center overflow-hidden relative group">
+                          {adminPhotoUrl ? (
+                            <>
+                              <img src={adminPhotoUrl} alt="Preview" className="w-full h-full object-cover" />
+                              <button 
+                                onClick={() => setAdminPhotoUrl('')}
+                                className="absolute inset-0 bg-red-500/80 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white"
+                              >
+                                <X size={20} />
+                              </button>
+                            </>
+                          ) : (
+                            <Camera size={24} className="text-white/20" />
+                          )}
+                          {isAdminUploading && (
+                            <div className="absolute inset-0 bg-brand-bg/60 flex items-center justify-center">
+                              <div className="w-5 h-5 border-2 border-brand-primary/30 border-t-brand-primary rounded-full animate-spin" />
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex-1 flex gap-2">
+                          <label className="flex-1">
+                            <div className="w-full bg-white/5 border border-white/10 border-dashed rounded-2xl py-4 px-6 text-white/40 text-[10px] font-black uppercase tracking-widest text-center cursor-pointer hover:bg-white/10 hover:border-brand-primary/30 transition-all flex items-center justify-center gap-2">
+                              <Upload size={14} />
+                              {adminPhotoUrl ? 'Trocar' : 'Enviar'}
+                            </div>
+                            <input 
+                              type="file"
+                              accept="image/*"
+                              onChange={handleAdminFileUpload}
+                              className="hidden"
+                            />
+                          </label>
+                          <button
+                            onClick={() => startCamera('admins')}
+                            className="px-6 bg-white/5 border border-white/10 rounded-2xl flex items-center justify-center text-white/40 hover:text-brand-primary hover:border-brand-primary/50 transition-all"
+                            title="Tirar Foto"
+                          >
+                            <Camera size={18} />
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div className="flex gap-3">
@@ -3186,7 +3341,7 @@ const AdminPanel = ({
   );
 };
 
-const HeroCard = ({ queueCount, settings }: { queueCount: number, settings: AppSettings }) => {
+const HeroCard = ({ queueCount, settings, calledEmployee }: { queueCount: number, settings: AppSettings, calledEmployee: Employee | null }) => {
   const [time, setTime] = useState(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
 
   useEffect(() => {
@@ -3200,6 +3355,7 @@ const HeroCard = ({ queueCount, settings }: { queueCount: number, settings: AppS
     <motion.div 
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
+      layout
       className="mx-4 md:mx-6 p-6 md:p-12 rounded-[32px] md:rounded-[40px] bg-brand-card relative overflow-hidden hero-gradient border border-white/5 shadow-2xl"
       style={settings.heroBackgroundImage ? {
         backgroundImage: `linear-gradient(to right, rgba(10, 15, 12, 0.95), rgba(10, 15, 12, 0.4)), url(${settings.heroBackgroundImage})`,
@@ -3207,33 +3363,77 @@ const HeroCard = ({ queueCount, settings }: { queueCount: number, settings: AppS
         backgroundPosition: 'center'
       } : {}}
     >
-      <div className="relative z-10">
-        <div className="flex items-center gap-2 mb-4 md:mb-6">
-          <Leaf size={12} className="text-brand-secondary md:w-3.5 md:h-3.5" />
-          <span className="text-[8px] md:text-[10px] font-black uppercase tracking-[0.3em] md:tracking-[0.4em] text-brand-secondary">{settings.heroSubtitle}</span>
-        </div>
-        
-        <h2 className="text-3xl md:text-6xl font-light leading-none tracking-tight mb-3 md:mb-2">
-          {settings.heroTitleLine1} <br />
-          <span className="text-brand-primary font-black">{settings.heroTitleLine2}</span>
-        </h2>
-        
-        <p className="text-white/50 text-xs md:text-base font-medium leading-relaxed max-w-full sm:max-w-[280px] md:max-w-md mb-8 md:mb-10">
-          {settings.heroDescription}
-        </p>
-        
-        <div className="flex flex-col sm:flex-row flex-wrap gap-3">
-          <div className="flex gap-3 w-full sm:w-auto">
-            <div className="flex-1 sm:flex-none px-5 py-3 rounded-full glass flex items-center justify-center sm:justify-start gap-3">
-              <Clock size={16} className="text-brand-secondary" />
-              <span className="text-xs font-bold tracking-widest">{time}</span>
-            </div>
-            <div className="flex-1 sm:flex-none px-5 py-3 rounded-full glass flex items-center justify-center sm:justify-start gap-3">
-              <Users size={16} className="text-brand-secondary" />
-              <span className="text-xs font-bold tracking-widest whitespace-nowrap">{queueCount} <span className="hidden xs:inline">Pessoas</span></span>
+      <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-8">
+        <div className="flex-1 space-y-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Leaf size={12} className="text-brand-secondary md:w-3.5 md:h-3.5" />
+            <span className="text-[8px] md:text-[10px] font-black uppercase tracking-[0.3em] md:tracking-[0.4em] text-brand-secondary">{settings.heroSubtitle}</span>
+          </div>
+          
+          <h2 className="text-3xl md:text-6xl font-light leading-none tracking-tight mb-3 md:mb-2">
+            {settings.heroTitleLine1} <br />
+            <span className="text-brand-primary font-black">{settings.heroTitleLine2}</span>
+          </h2>
+          
+          <p className="text-white/50 text-xs md:text-base font-medium leading-relaxed max-w-full sm:max-w-[280px] md:max-w-md mb-8 md:mb-10">
+            {settings.heroDescription}
+          </p>
+          
+          <div className="flex flex-col sm:flex-row flex-wrap gap-3">
+            <div className="flex gap-3 w-full sm:w-auto">
+              <div className="flex-1 sm:flex-none px-5 py-3 rounded-full glass flex items-center justify-center sm:justify-start gap-3">
+                <Clock size={16} className="text-brand-secondary" />
+                <span className="text-xs font-bold tracking-widest">{time}</span>
+              </div>
+              <div className="flex-1 sm:flex-none px-5 py-3 rounded-full glass flex items-center justify-center sm:justify-start gap-3">
+                <Users size={16} className="text-brand-secondary" />
+                <span className="text-xs font-bold tracking-widest whitespace-nowrap">{queueCount} <span className="hidden xs:inline">Pessoas</span></span>
+              </div>
             </div>
           </div>
         </div>
+
+        <AnimatePresence mode="wait">
+          {calledEmployee && (
+            <motion.div 
+              initial={{ opacity: 0, x: 20, scale: 0.9 }}
+              animate={{ opacity: 1, x: 0, scale: 1 }}
+              exit={{ opacity: 0, x: 20, scale: 0.9 }}
+              className="flex-shrink-0 w-full md:w-auto"
+            >
+              <div className="glass p-6 md:p-8 rounded-[32px] border-2 border-brand-primary/30 relative overflow-hidden group">
+                <div className="absolute top-0 left-0 w-full h-1 bg-brand-primary" />
+                <div className="flex items-center gap-6">
+                  <div className="relative">
+                    <div className="w-20 h-20 md:w-24 md:h-24 rounded-2xl overflow-hidden border-2 border-brand-primary/50 shadow-2xl relative z-10">
+                      {calledEmployee.photoUrl ? (
+                        <img src={calledEmployee.photoUrl} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full bg-brand-primary/10 flex items-center justify-center text-brand-primary font-bold text-2xl">
+                          {calledEmployee.position}
+                        </div>
+                      )}
+                    </div>
+                    <div className="absolute -top-3 -right-3 w-8 h-8 bg-brand-secondary text-brand-bg rounded-lg flex items-center justify-center font-black text-xs shadow-lg z-20">
+                      {calledEmployee.position}º
+                    </div>
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-[8px] font-black uppercase tracking-widest text-brand-secondary animate-pulse">Chamando Agora</span>
+                    </div>
+                    <h4 className="text-xl md:text-2xl font-black text-white uppercase tracking-tight truncate">
+                      {calledEmployee.name}
+                    </h4>
+                    <p className="text-[10px] text-white/40 font-bold uppercase tracking-widest mt-1">
+                      Próximo da Fila
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
       
       <div className="absolute -bottom-12 -right-12 w-48 md:w-64 h-48 md:h-64 bg-brand-primary/10 rounded-full blur-3xl" />
@@ -3378,13 +3578,21 @@ const QueueItem = React.forwardRef<HTMLDivElement, {
   ({ employee, isFirst, isAdmin, onCall }, ref) => (
     <motion.div 
       ref={ref}
-      initial={{ opacity: 0, x: -20 }}
-      animate={{ opacity: 1, x: 0 }}
+      layout
+      initial={{ opacity: 0, y: 20, scale: 0.95 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.95, transition: { duration: 0.2 } }}
       whileHover={!isFirst ? { 
         x: 8, 
         backgroundColor: "rgba(255, 255, 255, 0.05)",
         borderColor: "rgba(255, 255, 255, 0.1)"
       } : { scale: 1.02 }}
+      transition={{ 
+        type: "spring",
+        stiffness: 300,
+        damping: 30,
+        layout: { duration: 0.3 }
+      }}
       className={`group flex items-center justify-between p-5 md:p-6 rounded-[32px] transition-all duration-500 cursor-pointer ${
         isFirst 
           ? 'bg-brand-primary text-white shadow-[0_20px_50px_rgba(235,51,73,0.3)] z-10' 
@@ -4524,7 +4732,11 @@ function AppContent() {
 
           <main className="max-w-3xl mx-auto space-y-12">
             <div className="space-y-0">
-              <HeroCard queueCount={queue.length} settings={settings} />
+              <HeroCard 
+                queueCount={queue.filter(e => e.isActive).length} 
+                settings={settings} 
+                calledEmployee={showCallPopup ? calledEmployeeData : null}
+              />
             </div>
 
             <LotteryCountdownCard settings={settings} />
