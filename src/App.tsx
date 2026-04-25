@@ -354,7 +354,7 @@ const AdminTabLoader = ({ isLoading, children, skeleton: SkeletonComponent }: { 
 
 // --- Components ---
 
-const CallNotificationPopup = ({ employee, onClose }: { employee: Employee, onClose: () => void }) => {
+const CallNotificationPopup = ({ employee, onClose, isAuthenticated }: { employee: Employee, onClose: () => void, isAuthenticated: boolean }) => {
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.8, y: 50 }}
@@ -421,12 +421,14 @@ const CallNotificationPopup = ({ employee, onClose }: { employee: Employee, onCl
           </div>
         </div>
 
-        <button 
-          onClick={onClose}
-          className="w-full py-5 bg-brand-primary text-white font-black uppercase tracking-[0.2em] rounded-3xl shadow-xl hover:scale-105 transition-all active:scale-95 text-xs"
-        >
-          Entendido
-        </button>
+        {isAuthenticated && (
+          <button 
+            onClick={onClose}
+            className="w-full py-5 bg-brand-primary text-white font-black uppercase tracking-[0.2em] rounded-3xl shadow-xl hover:scale-105 transition-all active:scale-95 text-xs"
+          >
+            Entendido
+          </button>
+        )}
       </div>
     </motion.div>
   );
@@ -665,7 +667,8 @@ const AdminPanel = ({
   addNotification,
   currentHistoryPage,
   setCurrentHistoryPage,
-  ITEMS_PER_PAGE
+  ITEMS_PER_PAGE,
+  speak
 }: { 
   onLogout: () => void, 
   queue: Employee[], 
@@ -702,7 +705,8 @@ const AdminPanel = ({
   addNotification: (message: string, type?: 'success' | 'error' | 'info', description?: string) => void,
   currentHistoryPage: number,
   setCurrentHistoryPage: React.Dispatch<React.SetStateAction<number>>,
-  ITEMS_PER_PAGE: number
+  ITEMS_PER_PAGE: number,
+  speak: (text: string, force?: boolean) => void
 }) => {
   const [newName, setNewName] = useState('');
   const [newPhotoUrl, setNewPhotoUrl] = useState('');
@@ -727,52 +731,6 @@ const AdminPanel = ({
   const [showAddAdminConfirm, setShowAddAdminConfirm] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-
-  const speak = (text: string, force = false) => {
-    if (!settings.voiceCallEnabled && !force) return;
-    
-    try {
-      if (!window.speechSynthesis) {
-        console.warn('SpeechSynthesis não suportado neste navegador.');
-        return;
-      }
-
-      // Função para realizar a fala
-      const performSpeech = () => {
-        // Cancelar qualquer fala em andamento
-        window.speechSynthesis.cancel();
-        
-        // Delay pequeno para garantir que o cancelamento foi processado
-        setTimeout(() => {
-          const utterance = new SpeechSynthesisUtterance(text);
-          utterance.lang = 'pt-BR';
-          utterance.rate = 1.0; 
-          utterance.pitch = 1;
-          utterance.volume = 1;
-          
-          const voices = window.speechSynthesis.getVoices();
-          const ptBRVoice = voices.find(v => v.lang === 'pt-BR' || v.lang === 'pt_BR');
-          if (ptBRVoice) {
-            utterance.voice = ptBRVoice;
-          }
-          
-          window.speechSynthesis.speak(utterance);
-        }, 100);
-      };
-
-      // Se as vozes não foram carregadas ainda, esperar pelo evento
-      if (window.speechSynthesis.getVoices().length === 0) {
-        window.speechSynthesis.onvoiceschanged = () => {
-          performSpeech();
-          window.speechSynthesis.onvoiceschanged = null; // Remover após rodar uma vez
-        };
-      } else {
-        performSpeech();
-      }
-    } catch (err) {
-      console.error('Erro ao falar:', err);
-    }
-  };
 
   const handleCallNext = async () => {
     const activeQueueSorted = [...queue].filter(e => e.isActive).sort((a, b) => a.position - b.position);
@@ -3405,11 +3363,11 @@ const HeroCard = ({ queueCount, settings, calledEmployee }: { queueCount: number
                 <div className="absolute top-0 left-0 w-full h-1 bg-brand-primary" />
                 <div className="flex items-center gap-6">
                   <div className="relative">
-                    <div className="w-20 h-20 md:w-24 md:h-24 rounded-2xl overflow-hidden border-2 border-brand-primary/50 shadow-2xl relative z-10">
+                    <div className="w-28 h-28 md:w-36 md:h-36 rounded-2xl overflow-hidden border-2 border-brand-primary/50 shadow-2xl relative z-10 text-brand-bg">
                       {calledEmployee.photoUrl ? (
                         <img src={calledEmployee.photoUrl} alt="" className="w-full h-full object-cover" />
                       ) : (
-                        <div className="w-full h-full bg-brand-primary/10 flex items-center justify-center text-brand-primary font-bold text-2xl">
+                        <div className="w-full h-full bg-brand-primary/10 flex items-center justify-center text-brand-primary font-bold text-4xl">
                           {calledEmployee.position}
                         </div>
                       )}
@@ -3740,6 +3698,52 @@ function AppContent() {
   const [showCallPopup, setShowCallPopup] = useState(false);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
 
+  const speak = (text: string, force = false) => {
+    if (!settings.voiceCallEnabled && !force) return;
+    
+    try {
+      if (!window.speechSynthesis) {
+        console.warn('SpeechSynthesis não suportado neste navegador.');
+        return;
+      }
+
+      // Função para realizar a fala
+      const performSpeech = () => {
+        // Cancelar qualquer fala em andamento
+        window.speechSynthesis.cancel();
+        
+        // Delay pequeno para garantir que o cancelamento foi processado
+        setTimeout(() => {
+          const utterance = new SpeechSynthesisUtterance(text);
+          utterance.lang = 'pt-BR';
+          utterance.rate = 1.0; 
+          utterance.pitch = 1;
+          utterance.volume = 1;
+          
+          const voices = window.speechSynthesis.getVoices();
+          const ptBRVoice = voices.find(v => v.lang === 'pt-BR' || v.lang === 'pt_BR');
+          if (ptBRVoice) {
+            utterance.voice = ptBRVoice;
+          }
+          
+          window.speechSynthesis.speak(utterance);
+        }, 100);
+      };
+
+      // Se as vozes não foram carregadas ainda, esperar pelo evento
+      if (window.speechSynthesis.getVoices().length === 0) {
+        window.speechSynthesis.onvoiceschanged = () => {
+          performSpeech();
+          window.speechSynthesis.onvoiceschanged = null; // Remover após rodar uma vez
+        };
+      } else {
+        performSpeech();
+      }
+    } catch (err) {
+      console.error('Erro ao falar:', err);
+    }
+  };
+
   useEffect(() => {
     const handleOnline = () => {
       setIsOffline(false);
@@ -3817,11 +3821,15 @@ function AppContent() {
       if (called) {
         setCalledEmployeeData(called);
         setShowCallPopup(true);
+        
+        // Voice Reproduce for all (especially non-logged)
+        speak(`Próximo na fila: ${called.name}`, true);
+
         const timer = setTimeout(() => setShowCallPopup(false), 8000);
         return () => clearTimeout(timer);
       }
     }
-  }, [settings.lastCalledTimestamp, settings.lastCalledEmployeeId, lastCallEffect, queue]);
+  }, [settings.lastCalledTimestamp, settings.lastCalledEmployeeId, lastCallEffect, queue, isAuthenticated]);
 
   // Auth Listener
   useEffect(() => {
@@ -4625,6 +4633,7 @@ function AppContent() {
           <CallNotificationPopup 
             employee={calledEmployeeData} 
             onClose={() => setShowCallPopup(false)} 
+            isAuthenticated={isAuthenticated}
           />
         )}
       </AnimatePresence>
@@ -4707,6 +4716,7 @@ function AppContent() {
           currentHistoryPage={currentHistoryPage}
           setCurrentHistoryPage={setCurrentHistoryPage}
           ITEMS_PER_PAGE={ITEMS_PER_PAGE}
+          speak={speak}
         />
         </>
       )}
