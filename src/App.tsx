@@ -3741,6 +3741,7 @@ const SystemLoader = () => (
 function AppContent() {
   const [view, setView] = useState<'public' | 'login' | 'admin'>('public');
   const [hasInteracted, setHasInteracted] = useState(false);
+  const [speechQueue, setSpeechQueue] = useState<string[]>([]);
   const isFirstCallRef = useRef(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [currentUserRole, setCurrentUserRole] = useState<'admin' | 'coordinator' | null>(null);
@@ -3824,6 +3825,12 @@ function AppContent() {
     if (!localVoiceEnabled) return;
     if (!settings.voiceCallEnabled && !force) return;
     
+    // Se ainda não houve interação real, enfileirar para quando houver
+    if (!hasInteracted) {
+      setSpeechQueue(prev => [...prev.slice(-2), text]); // Mantém apenas os últimos 3 para não inundar ao clicar
+      return;
+    }
+    
     try {
       if (!window.speechSynthesis) {
         console.warn('⚠️ SpeechSynthesis não suportado.');
@@ -3865,10 +3872,19 @@ function AppContent() {
           
           utterance.onerror = (event) => {
             if (event.error === 'interrupted' || event.error === 'canceled') return;
+            
+            // Tratamento especial para o erro de permissão
+            if (event.error === 'not-allowed') {
+              console.warn('🔇 Áudio bloqueado pelo navegador. Aguardando interação.');
+              setHasInteracted(false);
+              setSpeechQueue(prev => [...prev, text]);
+              return;
+            }
+
             console.error('❌ Erro de voz:', event.error);
             
             // Fallback de idioma para TVs que não reconhecem o dialeto regional
-            if (event.error === 'language-not-supported' && utterance.lang !== 'pt') {
+            if (event.error === 'language-unavailable' && utterance.lang !== 'pt') {
                utterance.lang = 'pt';
                window.speechSynthesis.speak(utterance);
             }
@@ -3893,7 +3909,7 @@ function AppContent() {
     } catch (err) {
       console.error('❌ Erro fatal:', err);
     }
-  }, [localVoiceEnabled, settings.voiceCallEnabled]);
+  }, [localVoiceEnabled, settings.voiceCallEnabled, hasInteracted]);
 
   useEffect(() => {
     const handleInteraction = () => {
@@ -3906,6 +3922,15 @@ function AppContent() {
             window.speechSynthesis.cancel();
             const u = new SpeechSynthesisUtterance('');
             window.speechSynthesis.speak(u);
+            
+            // Processar fila se houver
+            if (speechQueue.length > 0) {
+              const lastInQueue = speechQueue[speechQueue.length - 1];
+              setTimeout(() => {
+                speak(lastInQueue, true);
+                setSpeechQueue([]);
+              }, 500);
+            }
           }
         } catch (e) {}
       }
@@ -4931,6 +4956,23 @@ function AppContent() {
           )}
 
           <main className="max-w-3xl mx-auto space-y-12">
+            {!hasInteracted && localVoiceEnabled && (
+              <motion.button
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => {
+                  setHasInteracted(true);
+                  speak('Áudio ativado com sucesso.', true);
+                }}
+                className="fixed bottom-6 right-6 z-[200] bg-brand-secondary text-brand-bg px-6 py-4 rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-2xl shadow-brand-secondary/40 flex items-center gap-3 animate-bounce"
+              >
+                <Volume2 size={18} />
+                Ativar Áudio da TV
+              </motion.button>
+            )}
+
             <div className="space-y-0">
               <HeroCard 
                 queueCount={queue.filter(e => e.isActive).length} 
