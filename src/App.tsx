@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { 
   History,
   Target,
@@ -3788,69 +3788,131 @@ function AppContent() {
     }, duration);
   };
 
-  const speak = (text: string, force = false) => {
-    if (!localVoiceEnabled) return;
-    if (!settings.voiceCallEnabled && !force) return;
+  // Voice Pre-loading Helper
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      const loadVoices = () => {
+        window.speechSynthesis.getVoices();
+      };
+      
+      // Some browsers need this called initially
+      loadVoices();
+      
+      if (window.speechSynthesis.onvoiceschanged !== undefined) {
+        window.speechSynthesis.onvoiceschanged = loadVoices;
+      }
+      
+      // Prime the system
+      const prime = () => {
+        try {
+          const utterance = new SpeechSynthesisUtterance('');
+          window.speechSynthesis.speak(utterance);
+        } catch (e) {}
+      };
+      
+      window.addEventListener('mousedown', prime, { once: true });
+      window.addEventListener('touchstart', prime, { once: true });
+      
+      return () => {
+        window.removeEventListener('mousedown', prime);
+        window.removeEventListener('touchstart', prime);
+      };
+    }
+  }, []);
+
+  const speak = useCallback((text: string, force = false) => {
+    if (!localVoiceEnabled) {
+      console.log('🗣️ Fala ignorada: localVoiceEnabled desligado');
+      return;
+    }
+    
+    if (!settings.voiceCallEnabled && !force) {
+      console.log('🗣️ Fala ignorada: configurações desativadas e sem força');
+      return;
+    }
     
     try {
       if (!window.speechSynthesis) {
-        console.warn('SpeechSynthesis não suportado neste navegador.');
+        console.warn('⚠️ SpeechSynthesis não suportado neste navegador.');
         return;
       }
 
-      // Função para realizar a fala
+      console.log(`🗣️ Iniciando fala: "${text}" (force: ${force})`);
+
+      // Ensure we are not paused
+      if (window.speechSynthesis.paused) {
+        console.log('🗣️ Retomando síntese pausada...');
+        window.speechSynthesis.resume();
+      }
+
+      const voices = window.speechSynthesis.getVoices();
+      
       const performSpeech = () => {
-        // Cancelar qualquer fala em andamento para evitar sobreposição e bugs
         window.speechSynthesis.cancel();
         
-        // Delay para garantir que o cancelamento foi processado e o áudio liberado
         setTimeout(() => {
           const utterance = new SpeechSynthesisUtterance(text);
           utterance.lang = 'pt-BR';
-          utterance.rate = 0.9; // Um pouco mais lento para clareza
+          utterance.rate = 0.95;
           utterance.pitch = 1;
           utterance.volume = 1;
           
-          // Tentar encontrar uma voz feminina em português se possível (geralmente mais clara)
-          const voices = window.speechSynthesis.getVoices();
-          const ptBRVoices = voices.filter(v => v.lang.startsWith('pt'));
-          const selectedVoice = ptBRVoices.find(v => v.name.toLowerCase().includes('google') || v.name.toLowerCase().includes('female')) || ptBRVoices[0];
+          const currentVoices = window.speechSynthesis.getVoices();
+          const ptBRVoices = currentVoices.filter(v => 
+            v.lang.toLowerCase().includes('pt-br') || 
+            v.lang.toLowerCase().startsWith('pt')
+          );
+          
+          const selectedVoice = 
+            ptBRVoices.find(v => v.name.toLowerCase().includes('google') && v.name.toLowerCase().includes('português')) ||
+            ptBRVoices.find(v => v.name.toLowerCase().includes('female')) ||
+            ptBRVoices.find(v => v.lang.toLowerCase().includes('pt-br')) ||
+            ptBRVoices[0];
           
           if (selectedVoice) {
             utterance.voice = selectedVoice;
+            console.log(`🗣️ Voz selecionada: ${selectedVoice.name}`);
+          } else {
+            console.warn('⚠️ Nenhuma voz pt-BR encontrada, usando padrão do sistema.');
           }
           
+          utterance.onstart = () => console.log('🗣️ Começou a falar...');
+          utterance.onend = () => console.log('🗣️ Terminou de falar.');
+          
           utterance.onerror = (event) => {
-            if (event.error === 'interrupted') {
-              // Silently ignore interrupted errors as they are often expected when a new call comes in
+            if (event.error === 'interrupted' || event.error === 'canceled') {
               return;
             }
-            console.error('Erro na síntese de voz:', event.error);
+            console.error('❌ Erro na síntese de voz:', event.error);
+            
+            // Fallback for some browsers that error on "pt-BR"
+            if (event.error === 'language-not-supported') {
+               console.log('🗣️ Tentando fallback de idioma...');
+               utterance.lang = 'pt';
+               window.speechSynthesis.speak(utterance);
+            }
           };
 
-          if (window.speechSynthesis.speaking) {
-             window.speechSynthesis.cancel();
-             setTimeout(() => window.speechSynthesis.speak(utterance), 50);
-          } else {
-             window.speechSynthesis.speak(utterance);
-          }
+          window.speechSynthesis.speak(utterance);
         }, 150);
       };
 
-      // Se as vozes não foram carregadas ainda, esperar pelo evento
-      if (window.speechSynthesis.getVoices().length === 0) {
-        const handleVoicesChanged = () => {
-          performSpeech();
-          window.speechSynthesis.onvoiceschanged = null;
+      if (voices.length === 0) {
+        console.log('🗣️ Carregando vozes...');
+        const checkVoices = () => {
+          if (window.speechSynthesis.getVoices().length > 0) {
+            performSpeech();
+            window.speechSynthesis.onvoiceschanged = null;
+          }
         };
-        window.speechSynthesis.onvoiceschanged = handleVoicesChanged;
+        window.speechSynthesis.onvoiceschanged = checkVoices;
       } else {
         performSpeech();
       }
     } catch (err) {
-      console.error('Erro ao inicializar fala:', err);
+      console.error('❌ Erro fatal ao inicializar fala:', err);
     }
-  };
+  }, [localVoiceEnabled, settings.voiceCallEnabled]);
 
   useEffect(() => {
     const handleInteraction = () => {
@@ -3972,7 +4034,7 @@ function AppContent() {
         }
       }
     }
-  }, [settings.lastCalledTimestamp, settings.lastCalledEmployeeId, lastCallEffect, queue]);
+  }, [settings.lastCalledTimestamp, settings.lastCalledEmployeeId, lastCallEffect, queue, speak]);
 
   // Auth Listener
   useEffect(() => {
