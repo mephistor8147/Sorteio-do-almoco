@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
+  History,
+  Target,
   Search, 
   Menu as MenuIcon, 
   Lock, 
@@ -3742,6 +3744,7 @@ function AppContent() {
   const isFirstCallRef = useRef(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [currentUserRole, setCurrentUserRole] = useState<'admin' | 'coordinator' | null>(null);
+  const [publicTab, setPublicTab] = useState<'current' | 'history' | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [notifications, setNotifications] = useState<{ id: string, message: string, type: 'success' | 'error' | 'info', description?: string }[]>([]);
   const [queue, setQueue] = useState<Employee[]>([]);
@@ -4750,7 +4753,7 @@ function AppContent() {
   };
 
   const filteredQueue = queue
-    .filter(emp => emp.name.toLowerCase().includes(searchQuery.toLowerCase()))
+    .filter(emp => emp.isActive && emp.name.toLowerCase().includes(searchQuery.toLowerCase()))
     .sort((a, b) => {
       const currentPos = settings.currentCallPosition || 1;
       const aCalled = a.isActive && a.position < currentPos;
@@ -4896,63 +4899,137 @@ function AppContent() {
             <LotteryCountdownCard settings={settings} />
 
             
-            <section className="px-4 md:px-6 space-y-8">
-              <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6">
-                <div className="text-center lg:text-left">
-                  <h3 className="text-2xl md:text-4xl font-light uppercase tracking-tight text-white mb-2">
-                    {settings.queueTitleLine1} <span className="font-black">{settings.queueTitleLine2}</span>
-                  </h3>
-                  <p className="text-[10px] md:text-xs font-black uppercase tracking-[0.3em] md:tracking-[0.4em] text-brand-secondary/60">
-                    {settings.queueSubtitle}
-                    {settings.lastLotteryDate && (
-                      <span className="ml-3 text-brand-secondary brightness-125 text-[12px] md:text-base font-black">
-                        • {new Date(settings.lastLotteryDate + 'T12:00:00').toLocaleDateString('pt-BR')}
-                      </span>
-                    )}
-                  </p>
+            <div className="flex justify-center gap-4 px-4 md:px-0">
+              <button 
+                onClick={() => setPublicTab('current')}
+                className={`flex-1 md:flex-none px-6 py-4 rounded-2xl text-[10px] md:text-xs font-black uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-3 ${publicTab === 'current' ? 'bg-brand-secondary text-brand-bg shadow-lg shadow-brand-secondary/20 scale-105 z-10' : 'bg-white/5 text-white/40 hover:bg-white/10'}`}
+              >
+                <Target size={16} />
+                Sorteio Atual
+              </button>
+              <button 
+                onClick={() => setPublicTab('history')}
+                className={`flex-1 md:flex-none px-6 py-4 rounded-2xl text-[10px] md:text-xs font-black uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-3 ${publicTab === 'history' ? 'bg-brand-secondary text-brand-bg shadow-lg shadow-brand-secondary/20 scale-105 z-10' : 'bg-white/5 text-white/40 hover:bg-white/10'}`}
+              >
+                <History size={16} />
+                Anteriores
+              </button>
+            </div>
+
+            {publicTab === 'current' && (isLoadingQueue || queue.some(e => e.isActive)) && (
+              <section className="px-4 md:px-6 space-y-8">
+                <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6">
+                  <div className="text-center lg:text-left">
+                    <h3 className="text-2xl md:text-4xl font-light uppercase tracking-tight text-white mb-2">
+                      {settings.queueTitleLine1} <span className="font-black">{settings.queueTitleLine2}</span>
+                    </h3>
+                    <p className="text-[10px] md:text-xs font-black uppercase tracking-[0.3em] md:tracking-[0.4em] text-brand-secondary/60">
+                      {settings.queueSubtitle}
+                      {settings.lastLotteryDate && (
+                        <span className="ml-3 text-brand-secondary brightness-125 text-[12px] md:text-base font-black">
+                          • {new Date(settings.lastLotteryDate + 'T12:00:00').toLocaleDateString('pt-BR')}
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                  
+                  <div className="relative group w-full lg:max-w-md">
+                    <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-white/20 group-focus-within:text-brand-secondary transition-colors" size={18} />
+                    <input 
+                      type="text"
+                      placeholder="Buscar na fila..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full bg-brand-card/50 border border-white/5 rounded-2xl py-4 pl-14 pr-6 text-sm text-white placeholder:text-white/20 focus:outline-none focus:ring-2 focus:ring-brand-secondary/20 focus:bg-brand-card transition-all"
+                    />
+                  </div>
                 </div>
                 
-                <div className="relative group w-full lg:max-w-md">
-                  <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-white/20 group-focus-within:text-brand-secondary transition-colors" size={18} />
-                  <input 
-                    type="text"
-                    placeholder="Buscar na fila..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full bg-brand-card/50 border border-white/5 rounded-2xl py-4 pl-14 pr-6 text-sm text-white placeholder:text-white/20 focus:outline-none focus:ring-2 focus:ring-brand-secondary/20 focus:bg-brand-card transition-all"
-                  />
+                <div className="space-y-4">
+                  <AnimatePresence mode="wait">
+                    {isLoadingQueue ? (
+                      <SkeletonQueue />
+                    ) : (
+                      <>
+                        {filteredQueue.map((employee, index) => (
+                          <QueueItem 
+                            key={employee.id} 
+                            employee={employee} 
+                            isFirst={index === 0 && searchQuery === ''} 
+                            isAdmin={isAuthenticated}
+                            onCall={(id) => toggleEmployeeActive(id, true)}
+                          />
+                        ))}
+                        {filteredQueue.length === 0 && (
+                          <motion.div 
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            className="py-20 text-center"
+                          >
+                            <p className="text-white/30 font-medium uppercase tracking-widest text-xs">Nenhum funcionário encontrado</p>
+                          </motion.div>
+                        )}
+                      </>
+                    )}
+                  </AnimatePresence>
                 </div>
-              </div>
-              
-              <div className="space-y-4">
-                <AnimatePresence mode="wait">
-                  {isLoadingQueue ? (
-                    <SkeletonQueue />
+              </section>
+            )}
+
+            {publicTab === 'history' && (
+              <section className="px-4 md:px-6 space-y-8">
+                <div className="text-center">
+                  <h3 className="text-2xl md:text-4xl font-light uppercase tracking-tight text-white mb-2">
+                    Sorteios <span className="font-black">Anteriores</span>
+                  </h3>
+                  <p className="text-[10px] md:text-xs font-black uppercase tracking-[0.4em] text-brand-secondary/60">
+                    Histórico de vencedores
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {isLoadingHistory ? (
+                    <SkeletonHistory />
+                  ) : history.length === 0 ? (
+                    <div className="col-span-full py-20 text-center">
+                      <p className="text-white/30 font-medium uppercase tracking-widest text-xs">Nenhum sorteio registrado</p>
+                    </div>
                   ) : (
-                    <>
-                      {filteredQueue.map((employee, index) => (
-                        <QueueItem 
-                          key={employee.id} 
-                          employee={employee} 
-                          isFirst={index === 0 && searchQuery === ''} 
-                          isAdmin={isAuthenticated}
-                          onCall={(id) => toggleEmployeeActive(id, true)}
-                        />
-                      ))}
-                      {filteredQueue.length === 0 && (
-                        <motion.div 
-                          initial={{ opacity: 0 }}
-                          animate={{ opacity: 1 }}
-                          className="py-20 text-center"
-                        >
-                          <p className="text-white/30 font-medium uppercase tracking-widest text-xs">Nenhum funcionário encontrado</p>
-                        </motion.div>
-                      )}
-                    </>
+                    history.map((item) => (
+                      <motion.div 
+                        key={item.id}
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="glass p-6 rounded-[32px] flex items-center gap-4 group"
+                      >
+                        <div className="w-16 h-16 bg-white/5 rounded-2xl overflow-hidden shrink-0 border border-white/10 p-0.5">
+                          {item.fullList?.[0]?.photoUrl ? (
+                            <img src={item.fullList[0].photoUrl} alt="" className="w-full h-full object-cover rounded-xl" referrerPolicy="no-referrer" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-brand-primary bg-brand-primary/10 rounded-xl">
+                              <Trophy size={28} />
+                            </div>
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-[8px] font-black uppercase tracking-widest text-white/40">
+                              {new Date(item.timestamp).toLocaleDateString('pt-BR')}
+                            </span>
+                            <span className="text-[8px] font-black uppercase tracking-widest text-brand-secondary">
+                              Vencedor
+                            </span>
+                          </div>
+                          <h4 className="text-white font-bold uppercase tracking-tight text-base truncate">
+                            {item.winnerName}
+                          </h4>
+                        </div>
+                      </motion.div>
+                    ))
                   )}
-                </AnimatePresence>
-              </div>
-            </section>
+                </div>
+              </section>
+            )}
           </main>
           
           <div className="px-4 md:px-6 mt-12 max-w-3xl mx-auto">
