@@ -477,6 +477,96 @@ const CallNotificationPopup = ({ employee, onClose, isAuthenticated, isLastCalle
   );
 };
 
+const LotteryResultModal = ({ historyItem, onClose }: { historyItem: LotteryHistory, onClose: () => void }) => {
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[600] flex items-center justify-center p-4 md:p-6"
+    >
+      <div className="absolute inset-0 bg-brand-bg/95 backdrop-blur-xl" onClick={onClose} />
+      
+      <motion.div
+        initial={{ opacity: 0, scale: 0.9, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        className="w-full max-w-2xl bg-brand-card border border-white/10 rounded-[40px] shadow-2xl relative z-10 overflow-hidden flex flex-col max-h-[90vh]"
+      >
+        <div className="p-8 border-b border-white/5 flex items-center justify-between shrink-0">
+          <div>
+            <span className="text-[10px] font-black uppercase tracking-[0.3em] text-brand-secondary mb-1 block">
+              Resultado Completo
+            </span>
+            <h3 className="text-2xl font-light uppercase tracking-tight text-white">
+              Sorteio de <span className="font-black">{new Date(historyItem.timestamp).toLocaleDateString('pt-BR')}</span>
+            </h3>
+          </div>
+          <button 
+            onClick={onClose}
+            className="w-12 h-12 rounded-2xl bg-white/5 text-white/40 hover:text-white flex items-center justify-center transition-colors shadow-lg"
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="p-4 md:p-8 overflow-y-auto flex-1 space-y-3 custom-scrollbar">
+          <div className="flex items-center justify-between px-4 mb-4">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-white/30">Ordem Gerada</span>
+            <span className="text-[10px] font-bold uppercase tracking-widest text-white/30">{historyItem.fullList.length} Colaboradores</span>
+          </div>
+
+          {historyItem.fullList.map((emp, index) => (
+            <div 
+              key={emp.id}
+              className={`p-4 rounded-2xl flex items-center justify-between transition-all ${
+                emp.id === historyItem.winnerId 
+                ? 'bg-brand-primary/20 border border-brand-primary/30' 
+                : 'bg-white/5 border border-white/5'
+              }`}
+            >
+              <div className="flex items-center gap-4">
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-[10px] ${
+                  emp.id === historyItem.winnerId ? 'bg-brand-primary text-white' : 'bg-white/10 text-white/40'
+                }`}>
+                  {index + 1}
+                </div>
+                <div className="w-10 h-10 rounded-xl bg-white/5 overflow-hidden shrink-0 border border-white/10 p-0.5">
+                  {emp.photoUrl ? (
+                    <img src={emp.photoUrl} alt="" className="w-full h-full object-cover rounded-lg" referrerPolicy="no-referrer" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-white/20">
+                      <UserIcon size={18} />
+                    </div>
+                  )}
+                </div>
+                <span className={`font-bold uppercase tracking-tight ${emp.id === historyItem.winnerId ? 'text-white' : 'text-white/70'}`}>
+                  {emp.name}
+                </span>
+              </div>
+              
+              {emp.id === historyItem.winnerId && (
+                <div className="flex items-center gap-2 text-brand-primary">
+                  <Trophy size={14} />
+                  <span className="text-[8px] font-black uppercase tracking-widest">Vencedor</span>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+
+        <div className="p-6 bg-white/5 border-t border-white/5">
+          <button 
+            onClick={onClose}
+            className="w-full py-4 bg-brand-primary text-white font-black uppercase tracking-widest rounded-2xl shadow-lg transition-all active:scale-95"
+          >
+            Fechar
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+};
+
 const Header = ({ onAdminClick, isAuthenticated, settings, localVoiceEnabled, onToggleVoice }: { 
   onAdminClick: () => void, 
   isAuthenticated: boolean, 
@@ -3745,7 +3835,8 @@ function AppContent() {
   const isFirstCallRef = useRef(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [currentUserRole, setCurrentUserRole] = useState<'admin' | 'coordinator' | null>(null);
-  const [publicTab, setPublicTab] = useState<'current' | 'history' | null>(null);
+  const [publicTab, setPublicTab] = useState<'current' | 'history'>('current');
+  const [selectedLotteryForList, setSelectedLotteryForList] = useState<LotteryHistory | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [notifications, setNotifications] = useState<{ id: string, message: string, type: 'success' | 'error' | 'info', description?: string }[]>([]);
   const [queue, setQueue] = useState<Employee[]>([]);
@@ -3870,6 +3961,7 @@ function AppContent() {
             utterance.voice = selectedVoice;
           }
           
+          // Fallback de idioma para TVs que não reconhecem o dialeto regional
           utterance.onerror = (event) => {
             if (event.error === 'interrupted' || event.error === 'canceled') return;
             
@@ -3877,14 +3969,15 @@ function AppContent() {
             if (event.error === 'not-allowed') {
               console.warn('🔇 Áudio bloqueado pelo navegador. Aguardando interação.');
               setHasInteracted(false);
-              setSpeechQueue(prev => [...prev, text]);
+              setSpeechQueue(prev => [...prev.slice(-2), text]);
               return;
             }
 
             console.error('❌ Erro de voz:', event.error);
             
-            // Fallback de idioma para TVs que não reconhecem o dialeto regional
-            if (event.error === 'language-unavailable' && utterance.lang !== 'pt') {
+            // Fallback agressivo de idioma
+            if ((event.error === 'language-unavailable' || event.error === 'voice-unavailable') && utterance.lang !== 'pt') {
+               console.log('🔄 Tentando fallback para idioma básico "pt"');
                utterance.lang = 'pt';
                window.speechSynthesis.speak(utterance);
             }
@@ -4004,13 +4097,14 @@ function AppContent() {
         }
       }, 250);
       
-      // Add notification for everyone
+      // Add notification and voice for everyone
       addNotification(`Sorteio Realizado! Nova ordem de serviço gerada.`, 'success');
+      speak('Sorteio realizado. Nova ordem de serviço gerada.', true);
     }
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [settings.lastLotteryTimestamp, lastLotteryEffect]);
+  }, [settings.lastLotteryTimestamp, lastLotteryEffect, speak]);
 
   // Queue Call Listener
   useEffect(() => {
@@ -4046,10 +4140,11 @@ function AppContent() {
   // Auth Listener
   useEffect(() => {
     // Safety timeout to prevent infinite loading if Firebase takes too long
+    // Reduced to 2s for faster public UI readiness
     const timeout = setTimeout(() => {
       setIsAuthReady(true);
       setIsLoadingSettings(false);
-    }, 5000);
+    }, 2000);
 
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       const isHardcodedAdmin = user?.email && ADMIN_EMAILS.includes(user.email.toLowerCase());
@@ -4851,6 +4946,15 @@ function AppContent() {
         )}
       </AnimatePresence>
 
+      <AnimatePresence>
+        {selectedLotteryForList && (
+          <LotteryResultModal 
+            historyItem={selectedLotteryForList} 
+            onClose={() => setSelectedLotteryForList(null)} 
+          />
+        )}
+      </AnimatePresence>
+
       {/* Notifications */}
       <div className="fixed bottom-8 right-8 z-[200] space-y-3 pointer-events-none">
         <AnimatePresence>
@@ -4973,29 +5077,55 @@ function AppContent() {
               </motion.button>
             )}
 
-            <div className="space-y-0">
-              <HeroCard 
-                queueCount={queue.filter(e => e.isActive).length} 
-                settings={settings} 
-                calledEmployee={showCallPopup ? calledEmployeeData : null}
-                isLastCalled={showCallPopup && calledEmployeeData ? queue.filter(e => e.isActive).every(e => e.position <= calledEmployeeData.position) : false}
-              />
+            <div className="space-y-8">
+              <div className="space-y-4">
+                <HeroCard 
+                  queueCount={queue.filter(e => e.isActive).length} 
+                  settings={settings} 
+                  calledEmployee={showCallPopup ? calledEmployeeData : null}
+                  isLastCalled={showCallPopup && calledEmployeeData ? queue.filter(e => e.isActive).every(e => e.position <= calledEmployeeData.position) : false}
+                />
+                
+                {history.length > 0 && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="flex justify-center"
+                  >
+                    <button 
+                      onClick={() => setSelectedLotteryForList(history[0])}
+                      className="flex items-center gap-3 px-6 py-3 bg-white/5 hover:bg-white/10 active:scale-95 rounded-[32px] border border-white/5 transition-all group backdrop-blur-sm shadow-xl"
+                    >
+                      <Trophy size={16} className="text-brand-secondary animate-pulse" />
+                      <div className="text-left">
+                        <span className="text-[9px] font-black uppercase tracking-[0.2em] text-brand-secondary block leading-none mb-1">Copa Último Sorteio</span>
+                        <span className="text-xs font-bold text-white/70 block leading-none">Ver resultado completo do bolão</span>
+                      </div>
+                      <div className="w-8 h-8 rounded-full bg-brand-secondary/10 flex items-center justify-center ml-2 group-hover:bg-brand-secondary/20 transition-colors">
+                        <ChevronRight size={16} className="text-brand-secondary group-hover:translate-x-0.5 transition-transform" />
+                      </div>
+                    </button>
+                  </motion.div>
+                )}
+              </div>
+
+              <div className="px-4 md:px-0">
+                <LotteryCountdownCard settings={settings} />
+              </div>
             </div>
 
-            <LotteryCountdownCard settings={settings} />
-
             
-            <div className="flex justify-center gap-4 px-4 md:px-0">
+            <div className="flex justify-center gap-4 px-4 md:px-0 mt-6">
               <button 
                 onClick={() => setPublicTab('current')}
-                className={`flex-1 md:flex-none px-6 py-4 rounded-2xl text-[10px] md:text-xs font-black uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-3 ${publicTab === 'current' ? 'bg-brand-secondary text-brand-bg shadow-lg shadow-brand-secondary/20 scale-105 z-10' : 'bg-white/5 text-white/40 hover:bg-white/10'}`}
+                className={`flex-1 md:flex-none px-6 py-4 rounded-[24px] text-[10px] md:text-xs font-black uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-3 ${publicTab === 'current' ? 'bg-brand-secondary text-brand-bg shadow-lg shadow-brand-secondary/20 scale-105 z-10' : 'bg-white/5 text-white/40 hover:bg-white/10'}`}
               >
                 <Target size={16} />
                 Sorteio Atual
               </button>
               <button 
                 onClick={() => setPublicTab('history')}
-                className={`flex-1 md:flex-none px-6 py-4 rounded-2xl text-[10px] md:text-xs font-black uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-3 ${publicTab === 'history' ? 'bg-brand-secondary text-brand-bg shadow-lg shadow-brand-secondary/20 scale-105 z-10' : 'bg-white/5 text-white/40 hover:bg-white/10'}`}
+                className={`flex-1 md:flex-none px-6 py-4 rounded-[24px] text-[10px] md:text-xs font-black uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-3 ${publicTab === 'history' ? 'bg-brand-secondary text-brand-bg shadow-lg shadow-brand-secondary/20 scale-105 z-10' : 'bg-white/5 text-white/40 hover:bg-white/10'}`}
               >
                 <History size={16} />
                 Anteriores
@@ -5086,9 +5216,10 @@ function AppContent() {
                         key={item.id}
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
-                        className="glass p-6 rounded-[32px] flex items-center gap-4 group"
+                        onClick={() => setSelectedLotteryForList(item)}
+                        className="glass p-6 rounded-[32px] flex items-center gap-4 group cursor-pointer hover:bg-white/5 active:scale-95 transition-all border border-white/5 hover:border-brand-secondary/20"
                       >
-                        <div className="w-16 h-16 bg-white/5 rounded-2xl overflow-hidden shrink-0 border border-white/10 p-0.5">
+                        <div className="w-16 h-16 bg-white/5 rounded-2xl overflow-hidden shrink-0 border border-white/10 p-0.5 group-hover:border-brand-secondary/40 transition-colors">
                           {item.fullList?.[0]?.photoUrl ? (
                             <img src={item.fullList[0].photoUrl} alt="" className="w-full h-full object-cover rounded-xl" referrerPolicy="no-referrer" />
                           ) : (
@@ -5102,9 +5233,12 @@ function AppContent() {
                             <span className="text-[8px] font-black uppercase tracking-widest text-white/40">
                               {new Date(item.timestamp).toLocaleDateString('pt-BR')}
                             </span>
-                            <span className="text-[8px] font-black uppercase tracking-widest text-brand-secondary">
-                              Vencedor
-                            </span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-[8px] font-black uppercase tracking-widest text-brand-secondary">
+                                Ver Lista
+                              </span>
+                              <ChevronRight size={10} className="text-brand-secondary" />
+                            </div>
                           </div>
                           <h4 className="text-white font-bold uppercase tracking-tight text-base truncate">
                             {item.winnerName}
@@ -5118,20 +5252,6 @@ function AppContent() {
             )}
           </main>
           
-          <div className="px-4 md:px-6 mt-12 max-w-3xl mx-auto">
-            <div className="p-6 md:p-8 rounded-[24px] md:rounded-[32px] glass relative overflow-hidden group">
-              <div className="relative z-10 flex items-center justify-between gap-4">
-                <div>
-                  <h4 className="text-base md:text-lg font-bold text-white mb-1 uppercase tracking-tight">Pausa para Café</h4>
-                  <p className="text-white/40 text-[10px] md:text-xs font-medium max-w-[180px] md:max-w-[200px]">Visite nosso lounge após o almoço.</p>
-                </div>
-                <button className="w-10 h-10 md:w-12 md:h-12 rounded-full bg-brand-secondary text-brand-bg flex items-center justify-center hover:scale-110 transition-transform shrink-0">
-                  <ArrowRight size={18} className="md:w-5 md:h-5" />
-                </button>
-              </div>
-              <div className="absolute top-0 right-0 w-32 h-32 bg-brand-secondary/5 rounded-full -mr-16 -mt-16 blur-2xl group-hover:bg-brand-secondary/10 transition-colors" />
-            </div>
-          </div>
         </>
       )}
     </div>
