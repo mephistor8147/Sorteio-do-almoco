@@ -3454,8 +3454,44 @@ const AdminPanel = ({
   );
 };
 
-const HeroCard = ({ queueCount, settings, calledEmployee, isLastCalled }: { queueCount: number, settings: AppSettings, calledEmployee: Employee | null, isLastCalled: boolean }) => {
+const HeroCard = ({ queueCount, settings, calledEmployee, isLastCalled, currentQueue }: { 
+  queueCount: number, 
+  settings: AppSettings, 
+  calledEmployee: Employee | null, 
+  isLastCalled: boolean,
+  currentQueue: Employee[]
+}) => {
   const [time, setTime] = useState(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+
+  const handleDownload = () => {
+    if (!currentQueue || currentQueue.length === 0) return;
+    
+    const sortedQueue = [...currentQueue]
+      .filter(e => e.isActive)
+      .sort((a, b) => a.position - b.position);
+
+    const headers = ['Posição', 'Nome', 'Status'];
+    const rows = sortedQueue.map(e => [
+      e.position,
+      `"${e.name.replace(/"/g, '""')}"`,
+      e.position < (calledEmployee?.position || 0) ? 'Atendido' : e.id === calledEmployee?.id ? 'Chamando' : 'Aguardando'
+    ]);
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.join(','))
+    ].join('\n');
+
+    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `ordem_servico_${new Date().toLocaleDateString('pt-BR')}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -3492,17 +3528,37 @@ const HeroCard = ({ queueCount, settings, calledEmployee, isLastCalled }: { queu
             {settings.heroDescription}
           </p>
           
-          <div className="flex flex-col sm:flex-row flex-wrap gap-3">
-            <div className="flex gap-3 w-full sm:w-auto">
-              <div className="flex-1 sm:flex-none px-5 py-3 rounded-full glass flex items-center justify-center sm:justify-start gap-3">
-                <Clock size={16} className="text-brand-secondary" />
-                <span className="text-xs font-bold tracking-widest">{time}</span>
-              </div>
-              <div className="flex-1 sm:flex-none px-5 py-3 rounded-full glass flex items-center justify-center sm:justify-start gap-3">
-                <Users size={16} className="text-brand-secondary" />
-                <span className="text-xs font-bold tracking-widest whitespace-nowrap">{queueCount} <span className="hidden xs:inline">Pessoas</span></span>
-              </div>
+          <div className="flex flex-wrap gap-3">
+            <div className="px-5 py-3 rounded-full glass flex items-center justify-center gap-3">
+              <Clock size={16} className="text-brand-secondary" />
+              <span className="text-xs font-bold tracking-widest">{time}</span>
             </div>
+            <div className="px-5 py-3 rounded-full glass flex items-center justify-center gap-3">
+              <Users size={16} className="text-brand-secondary" />
+              <span className="text-xs font-bold tracking-widest whitespace-nowrap">{queueCount} <span className="hidden xs:inline">Pessoas</span></span>
+            </div>
+            <button 
+              onClick={handleDownload}
+              title="Baixar Ordem de Serviço"
+              className="px-5 py-3 rounded-full glass flex items-center justify-center gap-2 hover:bg-white/10 active:scale-95 transition-all text-white/60 hover:text-white"
+            >
+              <FileDown size={16} className="text-brand-secondary" />
+              <span className="text-[10px] font-bold uppercase tracking-widest">Excel</span>
+            </button>
+
+            {settings.downloadUrl && (
+              <a 
+                href={settings.downloadUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-5 py-3 rounded-full bg-brand-secondary text-brand-bg flex items-center justify-center gap-2 hover:scale-105 active:scale-95 transition-all shadow-lg shadow-brand-secondary/20"
+              >
+                <Download size={16} />
+                <span className="text-[10px] font-black uppercase tracking-widest">
+                  {settings.downloadFileName || 'Baixar App'}
+                </span>
+              </a>
+            )}
           </div>
         </div>
 
@@ -5084,6 +5140,7 @@ function AppContent() {
                   settings={settings} 
                   calledEmployee={showCallPopup ? calledEmployeeData : null}
                   isLastCalled={showCallPopup && calledEmployeeData ? queue.filter(e => e.isActive).every(e => e.position <= calledEmployeeData.position) : false}
+                  currentQueue={queue}
                 />
                 
                 {history.length > 0 && (

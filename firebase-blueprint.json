@@ -37,11 +37,14 @@
         "heroTitleLine2": { "type": "string" },
         "heroSubtitle": { "type": "string" },
         "heroDescription": { "type": "string" },
+        "heroBackgroundImage": { "type": "string" },
         "lotteryTime": { "type": "string", "format": "time" },
         "lotteryDays": { "type": "array", "items": { "type": "number" } },
         "lotteryEnabled": { "type": "boolean" },
         "lotteryEnabledBy": { "type": "string" },
         "lastLotteryDate": { "type": "string", "format": "date-time" },
+        "downloadUrl": { "type": "string" },
+        "downloadFileName": { "type": "string" },
         "headerTitleLine1": { "type": "string" },
         "headerTitleLine2": { "type": "string" },
         "headerSubtitle": { "type": "string" },
@@ -49,9 +52,26 @@
         "queueTitleLine2": { "type": "string" },
         "queueSubtitle": { "type": "string" },
         "endOfRoundPosition": { "type": "number" },
-        "currentCallPosition": { "type": "number" }
+        "currentCallPosition": { "type": "number" },
+        "voiceCallEnabled": { "type": "boolean" },
+        "lastCalledEmployeeId": { "type": "string" },
+        "lastCalledTimestamp": { "type": "string" }
       },
-      "required": ["heroTitleLine1", "heroTitleLine2", "heroSubtitle", "heroDescription", "lotteryTime", "lotteryDays", "lotteryEnabled", "headerTitleLine1", "headerTitleLine2", "headerSubtitle", "queueTitleLine1", "queueTitleLine2", "queueSubtitle"]
+      "required": ["heroTitleLine1", "heroTitleLine2", "heroSubtitle", "heroDescription", "lotteryTime", "lotteryDays", "lotteryEnabled"]
+    },
+    "FileHistory": {
+      "title": "FileHistory",
+      "description": "A record of an uploaded file link.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "fileName": { "type": "string" },
+        "fileSize": { "type": "number" },
+        "uploaderEmail": { "type": "string" },
+        "downloadUrl": { "type": "string" }
+      },
+      "required": ["id", "timestamp", "fileName", "fileSize", "uploaderEmail", "downloadUrl"]
     },
     "LotteryHistory": {
       "title": "LotteryHistory",
@@ -115,6 +135,10 @@
     "/history/{historyId}": {
       "schema": "LotteryHistory",
       "description": "Collection of past lottery draws."
+    },
+    "/file_history/{historyId}": {
+      "schema": "FileHistory",
+      "description": "Collection of past file uploads or links."
     },
     "/admins/{adminId}": {
       "schema": "AdminUser",
