@@ -74,8 +74,13 @@ service cloud.firestore {
              (!('photoUrl' in data) || (data.photoUrl is string && data.photoUrl.size() <= 2000));
     }
 
+    function isPublicShuffleAllowed() {
+      let settings = get(/databases/$(database)/documents/settings/global).data;
+      return settings.publicShuffleEnabled == true;
+    }
+
     function isValidSettings(data) {
-      // Basic keys check - making it more flexible to allow additional fields like lastLotteryTimestamp
+      // Basic keys check - making it more flexible to allow additional fields
       return data.keys().hasAll(['lotteryTime', 'lotteryDays', 'lotteryEnabled']) &&
              data.lotteryTime is string &&
              data.lotteryTime.matches('^([0-1]?[0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$') &&
@@ -86,20 +91,32 @@ service cloud.firestore {
     match /queue/{employeeId} {
       allow get, list: if true;
       allow create: if isAtLeastCoordinator() && isValidId(employeeId) && isValidEmployee(incoming());
-      allow update: if isAtLeastCoordinator() && isValidEmployee(incoming()) && 
+      allow update: if (isAtLeastCoordinator() || isPublicShuffleAllowed()) && 
+                    isValidEmployee(incoming()) && 
                     incoming().id == existing().id; // ID must be immutable
       allow delete: if isAtLeastCoordinator();
     }
 
     match /settings/global {
       allow get: if true;
-      allow create, update: if isAtLeastCoordinator() && isValidSettings(incoming());
+      allow create, update: if (isAtLeastCoordinator() || isPublicShuffleActionAllowedForUpdate()) && 
+                           isValidSettings(incoming());
       allow delete: if isAtLeastCoordinator();
+    }
+
+    function isPublicShuffleActionAllowedForUpdate() {
+      let settings = existing();
+      let diff = incoming().diff(settings);
+      // Only allow if public shuffle is enabled and user is trying to update lottery date
+      // We allow updating the fields that handleShuffle changes
+      return settings.publicShuffleEnabled == true && 
+             incoming().lastLotteryDate != settings.lastLotteryDate &&
+             diff.affectedKeys().hasOnly(['lastLotteryDate', 'lastLotteryTimestamp', 'endOfRoundPosition', 'currentCallPosition', 'lastCalledEmployeeId', 'lastCalledTimestamp']);
     }
 
     match /history/{historyId} {
       allow get, list: if true;
-      allow create: if isAtLeastCoordinator() && isValidId(historyId);
+      allow create: if (isAtLeastCoordinator() || isPublicShuffleAllowed()) && isValidId(historyId);
       allow delete: if isAtLeastCoordinator();
     }
 

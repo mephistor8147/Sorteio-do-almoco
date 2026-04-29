@@ -55,7 +55,10 @@
         "currentCallPosition": { "type": "number" },
         "voiceCallEnabled": { "type": "boolean" },
         "lastCalledEmployeeId": { "type": "string" },
-        "lastCalledTimestamp": { "type": "string" }
+        "lastCalledTimestamp": { "type": "string" },
+        "publicShuffleEnabled": { "type": "boolean" },
+        "publicShuffleStartTime": { "type": "string" },
+        "publicShuffleEndTime": { "type": "string" }
       },
       "required": ["heroTitleLine1", "heroTitleLine2", "heroSubtitle", "heroDescription", "lotteryTime", "lotteryDays", "lotteryEnabled"]
     },

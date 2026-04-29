@@ -39,7 +39,20 @@ import {
   Volume2,
   VolumeX,
   Share2,
-  RefreshCw
+  RefreshCw,
+  FileText,
+  Shield,
+  ShieldCheck,
+  CloudDownload,
+  Image as ImageIcon,
+  File as FileIcon,
+  Activity,
+  AlertTriangle,
+  Globe,
+  Archive,
+  Code,
+  Calendar,
+  Save
 } from 'lucide-react';
 import html2pdf from 'html2pdf.js';
 import * as XLSX from 'xlsx';
@@ -66,7 +79,6 @@ import {
   updateDoc,
   handleFirestoreError,
   OperationType,
-  User,
   firebaseConfigExport,
   storage,
   ref,
@@ -74,6 +86,7 @@ import {
   uploadBytesResumable,
   getDownloadURL
 } from './firebase';
+import type { User } from './firebase';
 import { initializeApp, deleteApp } from 'firebase/app';
 import { getAuth, signOut } from 'firebase/auth';
 import { motion, AnimatePresence } from 'motion/react';
@@ -112,6 +125,9 @@ interface AppSettings {
   voiceCallEnabled?: boolean;
   lastCalledEmployeeId?: string | null;
   lastCalledTimestamp?: string | null;
+  publicShuffleEnabled?: boolean;
+  publicShuffleStartTime?: string;
+  publicShuffleEndTime?: string;
 }
 
 interface LotteryHistory {
@@ -168,7 +184,10 @@ const DEFAULT_SETTINGS: AppSettings = {
   currentCallPosition: 1,
   voiceCallEnabled: false,
   lastCalledEmployeeId: null,
-  lastCalledTimestamp: null
+  lastCalledTimestamp: null,
+  publicShuffleEnabled: false,
+  publicShuffleStartTime: '08:00',
+  publicShuffleEndTime: '18:00',
 };
 
 const ADMIN_EMAILS = ['l2xbrasil@gmail.com', 'sorteioadm@sorteio.com'];
@@ -1359,12 +1378,16 @@ const AdminPanel = ({
 
   const handleShuffleClick = async () => {
     const activeEmployees = queue.filter(e => e.isActive);
-    if (activeEmployees.length < 2) return;
+    if (activeEmployees.length < 2) {
+      addNotification('Mínimo de 2 funcionários ativos necessário para o sorteio.', 'error');
+      return;
+    }
 
     try {
       await onShuffle('manual');
-    } catch (e) {
+    } catch (e: any) {
       console.error('Erro ao chamar onShuffle:', e);
+      addNotification('Erro ao processar sorteio manual.', 'error', e.message);
     }
   };
 
@@ -1579,30 +1602,44 @@ const AdminPanel = ({
           </div>
         </div>
 
-        <div className="flex overflow-x-auto no-scrollbar gap-2 mb-8 p-1 bg-white/5 rounded-2xl w-full sm:w-fit">
-          <div className="flex gap-2 min-w-max">
+        <div className="flex overflow-x-auto no-scrollbar gap-2 mb-8 p-1.5 bg-white/5 backdrop-blur-xl rounded-[24px] w-full border border-white/5">
+          <div className="flex gap-1.5 min-w-max p-1">
             {[
-              { id: 'queue', label: 'Fila' },
+              { id: 'queue', label: 'Fila', icon: <Users size={16} /> },
               ...(currentUserRole === 'admin' ? [
-                { id: 'employees', label: 'Funcionário' },
+                { id: 'employees', label: 'Funcionários', icon: <Users size={16} /> },
               ] : []),
-              { id: 'lottery', label: 'Sorteio' },
+              { id: 'lottery', label: 'Sorteio', icon: <Dices size={16} /> },
               ...(currentUserRole === 'admin' ? [
-                { id: 'settings', label: 'Configurações' },
-                { id: 'files', label: 'Arquivos' },
+                { id: 'settings', label: 'Configurações', icon: <Settings size={16} /> },
+                { id: 'files', label: 'Arquivos', icon: <FileText size={16} /> },
               ] : []),
-              { id: 'history', label: 'Histórico' },
+              { id: 'history', label: 'Histórico', icon: <History size={16} /> },
               ...(currentUserRole === 'admin' ? [
-                { id: 'database', label: 'Banco de Dados' },
-                { id: 'admins', label: 'Administradores' }
+                { id: 'database', label: 'Banco de Dados', icon: <Database size={16} /> },
+                { id: 'admins', label: 'Admins', icon: <Shield size={16} /> }
               ] : [])
             ].map((tab) => (
               <button 
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
-                className={`px-4 sm:px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${activeTab === tab.id ? 'bg-brand-primary text-white' : 'text-white/40 hover:text-white'}`}
+                className={`flex items-center gap-2.5 px-5 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all duration-300 relative group overflow-hidden ${
+                  activeTab === tab.id 
+                    ? 'bg-brand-primary text-white shadow-lg shadow-brand-primary/20' 
+                    : 'text-white/40 hover:text-white/70 hover:bg-white/5'
+                }`}
               >
-                {tab.label}
+                <span className={`${activeTab === tab.id ? 'scale-110' : 'group-hover:scale-110'} transition-transform duration-300`}>
+                  {tab.icon}
+                </span>
+                <span className="relative z-10">{tab.label}</span>
+                {activeTab === tab.id && (
+                  <motion.div 
+                    layoutId="activeTabGlow"
+                    className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full animate-shimmer"
+                    transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
+                  />
+                )}
               </button>
             ))}
           </div>
@@ -1610,387 +1647,322 @@ const AdminPanel = ({
 
         {activeTab === 'queue' && (
           <AdminTabLoader isLoading={isLoadingQueue} skeleton={<SkeletonQueue />}>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-              <div className="md:col-span-2 space-y-8">
-                {/* Vencedor Atual Card */}
-                {(() => {
-                const currentPos = settings.currentCallPosition || 1;
-                const activeQueueSorted = [...queue].filter(e => e.isActive).sort((a, b) => a.position - b.position);
-                const winner = activeQueueSorted.find(e => e.position >= currentPos) || activeQueueSorted[0];
-                
-                if (!winner) return null;
-                
-                const prevPositions = history.map(h => {
-                  const p = h.fullList.findIndex(e => e.id === winner.id);
-                  return p !== -1 ? p + 1 : null;
-                }).filter(p => p !== null).slice(0, 5);
-
-                const lastActive = activeQueueSorted[activeQueueSorted.length - 1];
-                const isEndOfRound = winner.id === lastActive?.id;
-
-                return (
-                  <motion.div 
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="glass overflow-hidden rounded-[40px] flex flex-col border border-white/5 relative"
-                  >
-                    {isEndOfRound && (
-                      <div className="absolute top-0 inset-x-0 z-20 bg-brand-primary/90 backdrop-blur-md py-3 text-center border-b border-white/10 shadow-lg">
-                        <span className="text-[10px] font-black uppercase tracking-[0.5em] text-white animate-pulse">
-                          A chamada acabou
-                        </span>
-                      </div>
-                    )}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+              <div className="lg:col-span-8 space-y-8">
+                {/* Vencedor Atual Section */}
+                <div className="space-y-4">
+                  <div className="flex items-center gap-4 px-4">
+                    <div className="w-1.5 h-6 bg-brand-primary rounded-full shadow-[0_0_12px_rgba(5,150,105,0.8)]" />
+                    <h3 className="text-[12px] font-black uppercase tracking-[0.4em] text-white">Chamada em Destaque</h3>
+                  </div>
+                  {/* ... same winner card content but maybe enhanced ... */}
+                  {(() => {
+                    const currentPos = settings.currentCallPosition || 1;
+                    const activeQueueSorted = [...queue].filter(e => e.isActive).sort((a, b) => a.position - b.position);
+                    const winner = activeQueueSorted.find(e => e.position >= currentPos) || activeQueueSorted[0];
                     
-                    {/* Top 40% - Photo */}
-                    <div className="h-64 md:h-80 w-full relative overflow-hidden bg-white/5">
-                      {winner.photoUrl ? (
-                        <img 
-                          src={winner.photoUrl} 
-                          alt={winner.name} 
-                          className="w-full h-full object-cover" 
-                          referrerPolicy="no-referrer"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-white/10">
-                          <Users size={64} />
-                        </div>
-                      )}
-                      <div className="absolute inset-0 bg-gradient-to-t from-brand-bg via-transparent to-transparent" />
-                      <div className="absolute bottom-6 left-8">
-                        <span className="px-4 py-1.5 bg-brand-secondary text-brand-bg text-[10px] font-black uppercase tracking-widest rounded-full shadow-lg">
-                          Próximo na Fila
-                        </span>
-                      </div>
-                    </div>
+                    if (!winner) return null;
+                    
+                    const prevPositions = history.map(h => {
+                      const p = h.fullList.findIndex(e => e.id === winner.id);
+                      return p !== -1 ? p + 1 : null;
+                    }).filter(p => p !== null).slice(0, 5);
 
-                    {/* Bottom Info */}
-                    <div className="p-8 md:p-10 space-y-8">
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
-                        <div className="space-y-4">
-                          <div className="space-y-1">
-                            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white/30 ml-1">Nome</span>
-                            <h4 className="text-2xl md:text-3xl font-black uppercase tracking-tight text-white leading-none">
-                              {winner.name}
-                            </h4>
+                    const lastActive = activeQueueSorted[activeQueueSorted.length - 1];
+                    const isEndOfRound = winner.id === lastActive?.id;
+
+                    return (
+                      <motion.div 
+                        initial={{ opacity: 0, scale: 0.98 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="glass overflow-hidden rounded-[48px] flex flex-col border border-white/5 relative shadow-2xl shadow-black/40"
+                      >
+                        {isEndOfRound && (
+                          <div className="absolute top-0 inset-x-0 z-20 bg-brand-primary/90 backdrop-blur-xl py-4 text-center border-b border-white/10 shadow-lg">
+                            <span className="text-[11px] font-black uppercase tracking-[0.6em] text-white animate-pulse">
+                              RODADA FINALIZADA
+                            </span>
                           </div>
-
-                          <div className="space-y-1">
-                            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white/30 ml-1">Posição Atual</span>
-                            <div className="flex items-center gap-3">
-                              <span className="text-2xl font-black text-brand-secondary">{winner.position}º</span>
-                              <span className="text-[10px] font-bold uppercase tracking-widest text-white/40">lugar na fila</span>
+                        )}
+                        
+                        <div className="h-72 md:h-[400px] w-full relative overflow-hidden bg-brand-bg/40">
+                          {winner.photoUrl ? (
+                            <img 
+                              src={winner.photoUrl} 
+                              alt={winner.name} 
+                              className="w-full h-full object-cover" 
+                              referrerPolicy="no-referrer"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-white/5">
+                              <Users size={120} strokeWidth={1} />
                             </div>
-                          </div>
-                        </div>
-
-                        <div className="space-y-4">
-                          <div className="space-y-2">
-                            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white/30 ml-1">Posições Anteriores</span>
-                            <div className="flex flex-wrap gap-2">
-                              {prevPositions.length > 0 ? prevPositions.map((pos, i) => (
-                                <span key={i} className="px-3 py-1 bg-white/5 rounded-lg text-[10px] font-bold text-white/60 border border-white/5">
-                                  {pos}º
-                                </span>
-                              )) : (
-                                <span className="text-[10px] font-bold text-white/20 uppercase tracking-widest">Nenhum registro</span>
-                              )}
-                            </div>
-                          </div>
-
-                          <button 
-                            onClick={handleCallNext}
-                            className="w-full h-14 bg-brand-primary hover:bg-brand-primary/90 text-white rounded-2xl flex items-center justify-center gap-3 text-xs font-black uppercase tracking-widest transition-all shadow-xl shadow-brand-primary/20 group"
-                          >
-                            <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
-                            Chamar Próximo
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </motion.div>
-                );
-              })()}
-
-              <div className="space-y-4">
-                <h3 className="text-[10px] font-black uppercase tracking-[0.4em] text-white/30 ml-4">Ordem Atual ({queue.filter(e => e.isActive).length})</h3>
-                <div className="space-y-3">
-                  {isLoadingQueue ? (
-                    <SkeletonQueue />
-                  ) : (
-                    [...queue].filter(e => e.isActive).sort((a, b) => {
-                      const currentPos = settings.currentCallPosition || 1;
-                      const aCalled = a.position < currentPos;
-                      const bCalled = b.position < currentPos;
-                      if (aCalled !== bCalled) return aCalled ? 1 : -1;
-                      return a.position - b.position;
-                    }).map((emp) => (
-                      <div key={emp.id} className="glass p-4 md:p-5 rounded-[24px] md:rounded-[32px] flex items-center justify-between group border border-white/5 hover:border-brand-secondary/30 transition-all">
-                        <div className="flex items-center gap-4">
-                          <div className={`w-12 h-12 md:w-16 md:h-16 rounded-2xl flex items-center justify-center font-black text-lg md:text-xl overflow-hidden shrink-0 border-2 ${
-                            emp.position <= (settings.currentCallPosition || 1) - 1 
-                              ? 'bg-white/5 text-white/20 border-white/5' 
-                              : 'bg-brand-secondary/10 text-brand-secondary border-brand-secondary/20'
-                          }`}>
-                            {emp.photoUrl ? (
-                              <img src={emp.photoUrl} alt={emp.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                            ) : (
-                              `${emp.position}º`
-                            )}
-                          </div>
-                          <div>
-                            <span className="text-white font-bold uppercase tracking-tight text-sm md:text-base block">{emp.name}</span>
-                            <div className="flex items-center gap-2">
-                              <span className={`text-[10px] font-black uppercase tracking-widest ${
-                                emp.position <= (settings.currentCallPosition || 1) - 1 ? 'text-white/20' : 'text-brand-secondary'
-                              }`}>
-                                Posição {emp.position}º
+                          )}
+                          <div className="absolute inset-0 bg-gradient-to-t from-brand-bg via-brand-bg/20 to-transparent" />
+                          <div className="absolute bottom-10 left-10">
+                            <motion.div 
+                              initial={{ x: -20, opacity: 0 }}
+                              animate={{ x: 0, opacity: 1 }}
+                              transition={{ delay: 0.2 }}
+                              className="flex flex-col gap-3"
+                            >
+                              <span className="w-fit px-5 py-2 bg-brand-secondary text-brand-bg text-[11px] font-black uppercase tracking-[0.2em] rounded-full shadow-2xl shadow-brand-secondary/40">
+                                Próximo da Vez
                               </span>
-                              {emp.position === (settings.currentCallPosition || 1) && (
-                                <span className="px-2 py-0.5 bg-brand-primary text-white text-[8px] font-black uppercase rounded-full">Atual</span>
-                              )}
+                              <h4 className="text-4xl md:text-6xl font-black uppercase tracking-tight text-white drop-shadow-2xl">
+                                {winner.name}
+                              </h4>
+                            </motion.div>
+                          </div>
+                        </div>
+
+                        <div className="p-10 md:p-14 bg-gradient-to-b from-brand-bg/50 to-transparent">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+                            <div className="space-y-8">
+                              <div className="grid grid-cols-2 gap-6">
+                                <div className="space-y-1.5 p-4 bg-white/5 rounded-3xl border border-white/5">
+                                  <span className="text-[10px] font-black uppercase tracking-widest text-white/30 truncate ml-1">Posição</span>
+                                  <div className="flex items-end gap-1">
+                                    <span className="text-3xl font-black text-brand-secondary leading-none">{winner.position}º</span>
+                                    <span className="text-[9px] font-bold uppercase tracking-widest text-white/20 mb-1">Lugar</span>
+                                  </div>
+                                </div>
+                                <div className="space-y-1.5 p-4 bg-white/5 rounded-3xl border border-white/5">
+                                  <span className="text-[10px] font-black uppercase tracking-widest text-white/30 truncate ml-1">Percentual</span>
+                                  <div className="flex items-end gap-1">
+                                    <span className="text-3xl font-black text-white/80 leading-none">
+                                      {Math.round((winner.position / activeQueueSorted.length) * 100)}%
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="space-y-3">
+                                <span className="text-[10px] font-black uppercase tracking-widest text-white/20 ml-2">Histórico Recente</span>
+                                <div className="flex flex-wrap gap-2.5">
+                                  {prevPositions.length > 0 ? prevPositions.map((pos, i) => (
+                                    <span key={i} className="w-12 h-10 flex items-center justify-center bg-white/5 rounded-xl text-[11px] font-black text-white/40 border border-white/5 hover:border-brand-secondary/30 transition-all">
+                                      {pos}º
+                                    </span>
+                                  )) : (
+                                    <span className="px-6 py-3 bg-white/5 rounded-2xl text-[10px] font-black text-white/10 uppercase tracking-widest border border-white/5 w-full text-center">
+                                      Nenhum sorteio registrado
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex flex-col justify-end space-y-4">
+                              <button 
+                                onClick={handleCallNext}
+                                className="w-full h-20 bg-brand-primary hover:bg-brand-primary/90 text-white rounded-[28px] flex items-center justify-center gap-4 text-sm font-black uppercase tracking-[0.2em] transition-all shadow-2xl shadow-brand-primary/40 group active:scale-95"
+                              >
+                                <span className="p-3 bg-white/10 rounded-2xl group-hover:bg-white/20 transition-all group-hover:scale-110">
+                                  <Volume2 size={24} />
+                                </span>
+                                Chamar Próximo
+                                <ChevronRight size={24} className="group-hover:translate-x-2 transition-transform" />
+                              </button>
+                              <p className="text-[10px] text-white/20 text-center font-black uppercase tracking-widest">
+                                Atalho: Tecla ESPAÇO para chamar
+                              </p>
                             </div>
                           </div>
                         </div>
-                      </div>
-                    ))
-                  )}
+                      </motion.div>
+                    );
+                  })()}
+                </div>
+
+                {/* Lista Completa Section */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between px-4">
+                    <div className="flex items-center gap-4">
+                      <div className="w-1.5 h-6 bg-brand-secondary rounded-full shadow-[0_0_12px_rgba(245,158,11,0.5)]" />
+                      <h3 className="text-[12px] font-black uppercase tracking-[0.4em] text-white">Fila Completa ({queue.filter(e => e.isActive).length})</h3>
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {isLoadingQueue ? (
+                      <SkeletonQueue />
+                    ) : (
+                      [...queue].filter(e => e.isActive).sort((a, b) => {
+                        const currentPos = settings.currentCallPosition || 1;
+                        const aCalled = a.position < currentPos;
+                        const bCalled = b.position < currentPos;
+                        if (aCalled !== bCalled) return aCalled ? 1 : -1;
+                        return a.position - b.position;
+                      }).map((emp) => {
+                        const isCalled = emp.position < (settings.currentCallPosition || 1);
+                        const isNext = emp.position === (settings.currentCallPosition || 1);
+                        
+                        return (
+                          <motion.div 
+                            key={emp.id} 
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className={`glass p-5 rounded-[32px] flex items-center justify-between group border transition-all ${
+                              isNext 
+                                ? 'bg-brand-secondary/10 border-brand-secondary/40 shadow-xl shadow-brand-secondary/10' 
+                                : isCalled 
+                                  ? 'opacity-40 grayscale border-white/5' 
+                                  : 'border-white/5 hover:border-white/20'
+                            }`}
+                          >
+                            <div className="flex items-center gap-4 min-w-0">
+                              <div className={`w-14 h-14 rounded-2xl flex items-center justify-center font-black text-lg overflow-hidden shrink-0 border-2 transition-all ${
+                                isNext 
+                                  ? 'bg-brand-secondary text-brand-bg border-brand-secondary/20 rotate-3' 
+                                  : isCalled 
+                                    ? 'bg-white/5 border-white/5' 
+                                    : 'bg-white/5 border-white/10 group-hover:border-white/20'
+                              }`}>
+                                {emp.photoUrl ? (
+                                  <img src={emp.photoUrl} alt={emp.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                ) : (
+                                  <span className={isNext ? 'text-brand-bg' : 'text-white/20'}>{emp.position}º</span>
+                                )}
+                              </div>
+                              <div className="min-w-0">
+                                <span className={`font-black uppercase tracking-tight text-sm block truncate ${isNext ? 'text-brand-secondary' : 'text-white'}`}>
+                                  {emp.name}
+                                </span>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[9px] font-black uppercase tracking-widest text-white/30">
+                                    Posição {emp.position}º
+                                  </span>
+                                  {isNext && (
+                                    <span className="px-2 py-0.5 bg-brand-secondary text-brand-bg text-[7px] font-black uppercase rounded-full animate-pulse">ATUAL</span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                            {isCalled && <Check size={16} className="text-brand-primary shrink-0" />}
+                          </motion.div>
+                        );
+                      })
+                    )}
+                  </div>
                   {!isLoadingQueue && queue.filter(e => e.isActive).length === 0 && (
-                    <div className="glass p-12 rounded-[40px] text-center text-white/40 uppercase tracking-widest text-[10px] font-black">
-                      A fila está vazia.
+                    <div className="glass p-20 rounded-[48px] text-center border border-dashed border-white/10">
+                      <Users size={48} className="mx-auto mb-4 text-white/5" />
+                      <p className="text-white/20 uppercase tracking-[0.3em] text-[10px] font-black">A fila está vazia no momento.</p>
                     </div>
                   )}
                 </div>
               </div>
-            </div>
 
-            <div className="space-y-6">
-              <div className="glass p-6 md:p-8 rounded-[32px] md:rounded-[40px] space-y-4">
-                <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-brand-secondary">Status do Sistema</h3>
-                <div className="flex items-center justify-between">
-                  <span className="text-white/60 text-[10px] font-bold uppercase tracking-widest">Banco de Dados</span>
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                    <span className="text-green-500 text-[8px] font-black uppercase tracking-widest">Online</span>
+              {/* Sidebar Section */}
+              <div className="lg:col-span-4 space-y-6">
+                {/* Status Card */}
+                <div className="glass p-8 rounded-[40px] border border-white/10 relative overflow-hidden group">
+                  <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity">
+                    <Activity size={80} />
+                  </div>
+                  <h3 className="text-[11px] font-black uppercase tracking-[0.4em] text-brand-secondary mb-8">Estado do Sistema</h3>
+                  <div className="space-y-6">
+                    <div className="flex items-center justify-between p-4 bg-white/5 rounded-3xl border border-white/5">
+                      <div className="flex flex-col gap-1">
+                        <span className="text-white/40 text-[9px] font-black uppercase tracking-widest leading-none">Database</span>
+                        <span className="text-white text-xs font-bold uppercase tracking-tight">Firebase Realtime</span>
+                      </div>
+                      <div className="flex items-center gap-2 px-3 py-1 bg-green-500/10 rounded-full border border-green-500/20">
+                        <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.6)]" />
+                        <span className="text-green-500 text-[8px] font-black uppercase tracking-widest">Ativo</span>
+                      </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="p-4 bg-white/5 rounded-3xl border border-white/5">
+                        <span className="text-white/30 text-[8px] font-black uppercase tracking-widest block mb-1">Ativos</span>
+                        <span className="text-2xl font-black text-white">{queue.filter(e => e.isActive).length}</span>
+                      </div>
+                      <div className="p-4 bg-white/5 rounded-3xl border border-white/5">
+                        <span className="text-white/30 text-[8px] font-black uppercase tracking-widest block mb-1">Total</span>
+                        <span className="text-2xl font-black text-white">{queue.length}</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-white/60 text-[10px] font-bold uppercase tracking-widest">Funcionários Ativos</span>
-                  <span className="text-white text-[10px] font-black">{queue.filter(e => e.isActive).length}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-white/60 text-[10px] font-bold uppercase tracking-widest">Total Cadastrado</span>
-                  <span className="text-white text-[10px] font-black">{queue.length}</span>
-                </div>
-              </div>
 
-              <div className="glass p-6 md:p-8 rounded-[32px] md:rounded-[40px] space-y-4">
-                <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-brand-secondary">Ações Rápidas</h3>
-                <div className="grid grid-cols-1 gap-3">
-                  <button 
-                    onClick={() => {
-                      const newStatus = !settings.voiceCallEnabled;
-                      onUpdateSettings({ ...settings, voiceCallEnabled: newStatus });
-                      
-                      if (newStatus) {
-                        setTimeout(() => {
-                          speak('Chamada por voz ativada. O sistema agora anunciará os nomes.', true);
-                        }, 500);
-                      }
-                    }}
-                    className={`w-full flex items-center gap-3 p-4 rounded-2xl transition-all text-left group ${settings.voiceCallEnabled ? 'bg-brand-primary/20 border border-brand-primary/20' : 'bg-white/5 border border-white/5'}`}
-                  >
-                    <Volume2 size={18} className={settings.voiceCallEnabled ? 'text-brand-primary' : 'text-white/40'} />
-                    <div className="flex flex-col">
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-white/70">Chamada por Voz</span>
-                      <span className="text-[8px] text-white/20 uppercase font-medium">
-                        {settings.voiceCallEnabled ? 'Ativado - Anuncia nomes ao chamar' : 'Desativado - Sem aviso sonoro'}
-                      </span>
-                    </div>
-                  </button>
+                {/* Ações Rápidas Card */}
+                <div className="glass p-8 rounded-[40px] border border-white/10">
+                  <h3 className="text-[11px] font-black uppercase tracking-[0.4em] text-brand-primary mb-6">Ações Rápidas</h3>
+                  <div className="space-y-3">
+                    <button 
+                      onClick={() => {
+                        const newStatus = !settings.voiceCallEnabled;
+                        onUpdateSettings({ ...settings, voiceCallEnabled: newStatus });
+                        if (newStatus) speak('Voz habilitada.', true);
+                      }}
+                      className={`w-full group flex items-center gap-4 p-5 rounded-3xl transition-all border ${
+                        settings.voiceCallEnabled 
+                          ? 'bg-brand-primary/10 border-brand-primary/30' 
+                          : 'bg-white/5 border-white/5 hover:bg-white/10 hover:border-white/10'
+                      }`}
+                    >
+                      <div className={`p-3 rounded-2xl transition-all ${
+                        settings.voiceCallEnabled ? 'bg-brand-primary text-white shadow-xl shadow-brand-primary/30' : 'bg-white/5 text-white/30'
+                      }`}>
+                        <Volume2 size={20} />
+                      </div>
+                      <div className="text-left">
+                        <span className="text-[11px] font-black uppercase tracking-widest text-white/80 block">Chamada por Voz</span>
+                        <span className={`text-[8px] uppercase font-black tracking-widest ${settings.voiceCallEnabled ? 'text-brand-primary' : 'text-white/20'}`}>
+                          {settings.voiceCallEnabled ? 'Ativado' : 'Desativado'}
+                        </span>
+                      </div>
+                    </button>
 
-                  <button 
-                    onClick={() => {
-                      onResetQueue();
-                    }}
-                    className="w-full flex items-center gap-3 p-4 rounded-2xl bg-white/5 hover:bg-white/10 transition-all text-left group"
-                  >
-                    <Database size={18} className="text-white/40 group-hover:text-brand-secondary" />
-                    <div className="flex flex-col">
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-white/70">Limpar Fila</span>
-                      <span className="text-[8px] text-white/20 uppercase font-medium">Reseta posições sem excluir</span>
-                    </div>
-                  </button>
-
-                  <button 
-                    onClick={() => {
-                      onUpdateSettings({ 
-                        ...settings, 
-                        currentCallPosition: 1,
-                        lastCalledEmployeeId: null,
-                        lastCalledTimestamp: null
-                      });
-                      addNotification('Sequência de chamada resetada!', 'success');
-                    }}
-                    className="w-full flex items-center gap-3 p-4 rounded-2xl bg-white/5 hover:bg-white/10 transition-all text-left group"
-                  >
-                    <RefreshCw size={18} className="text-white/40 group-hover:text-brand-secondary" />
-                    <div className="flex flex-col">
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-white/70">Resetar Sequência</span>
-                      <span className="text-[8px] text-white/20 uppercase font-medium">Volta a chamada para o 1º da fila</span>
-                    </div>
-                  </button>
+                    <button 
+                      onClick={onResetQueue}
+                      className="w-full group flex items-center gap-4 p-5 rounded-3xl bg-white/5 border border-white/5 hover:bg-red-500/10 hover:border-red-500/20 transition-all text-left"
+                    >
+                      <div className="p-3 bg-white/5 rounded-2xl text-white/30 group-hover:text-red-400 group-hover:bg-red-500/10 transition-all">
+                        <RefreshCw size={20} />
+                      </div>
+                      <div>
+                        <span className="text-[11px] font-black uppercase tracking-widest text-white/80 block">Limpar Fila</span>
+                        <span className="text-[8px] text-white/20 uppercase font-black tracking-widest">Zerar todos os status</span>
+                      </div>
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
           </AdminTabLoader>
         )}
 
         {activeTab === 'employees' && currentUserRole === 'admin' && (
           <AdminTabLoader isLoading={isLoadingQueue} skeleton={<SkeletonQueue />}>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <div className="md:col-span-2 space-y-8">
-              <div className="glass p-6 md:p-8 rounded-[32px] md:rounded-[40px] space-y-6">
-                <h3 className="text-lg md:text-xl font-bold uppercase tracking-tight flex items-center gap-3">
-                  <Users className="text-brand-secondary" size={20} /> {editingId ? 'Editar Funcionário' : 'Adicionar Funcionário'}
-                </h3>
-                <div className="space-y-4">
-                  {isCameraOpen ? (
-                    <div className="relative rounded-[32px] overflow-hidden bg-black aspect-video">
-                      <video 
-                        ref={videoRef} 
-                        autoPlay 
-                        playsInline 
-                        className="w-full h-full object-cover mirror"
-                      />
-                      <canvas ref={canvasRef} className="hidden" />
-                      <div className="absolute bottom-6 inset-x-0 flex justify-center items-center gap-4">
-                        <button
-                          onClick={stopCamera}
-                          className="w-12 h-12 rounded-full bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-white hover:bg-red-500 transition-all"
-                        >
-                          <X size={20} />
-                        </button>
-                        <button
-                          onClick={capturePhoto}
-                          className="w-16 h-16 rounded-full bg-brand-primary flex items-center justify-center text-white shadow-xl shadow-brand-primary/40 hover:scale-105 active:scale-95 transition-all"
-                        >
-                          <Camera size={28} />
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col sm:flex-row gap-3">
-                      <div className="flex gap-2">
-                        <div className="relative group">
-                          <input 
-                            type="file"
-                            accept="image/*"
-                            onChange={handleFileUpload}
-                            className="hidden"
-                            id="photo-upload"
-                          />
-                          <label 
-                            htmlFor="photo-upload"
-                            className="w-14 h-14 bg-white/5 border border-white/10 rounded-2xl flex items-center justify-center text-white/40 hover:text-brand-secondary hover:border-brand-secondary/50 cursor-pointer transition-all overflow-hidden"
-                            title="Upload Foto"
-                          >
-                            {newPhotoUrl ? (
-                              <img src={newPhotoUrl} alt="Preview" className="w-full h-full object-cover" />
-                            ) : (
-                              isUploading ? <div className="animate-spin rounded-full h-5 w-5 border-2 border-white/20 border-t-brand-secondary" /> : <Upload size={24} />
-                            )}
-                          </label>
-                        </div>
-                        <button
-                          onClick={() => startCamera('employees')}
-                          className="w-14 h-14 bg-white/5 border border-white/10 rounded-2xl flex items-center justify-center text-white/40 hover:text-brand-primary hover:border-brand-primary/50 transition-all"
-                          title="Tirar Foto"
-                        >
-                          <Camera size={24} />
-                        </button>
-                      </div>
-                      <input 
-                        type="text"
-                        value={newName}
-                        onChange={(e) => setNewName(e.target.value)}
-                        placeholder="Nome do funcionário..."
-                        className="flex-1 bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all text-sm md:text-base"
-                      />
-                      <div className="flex gap-2">
-                        <button 
-                          onClick={() => {
-                            if (newName.trim()) {
-                              if (editingId) {
-                                onUpdateEmployee(editingId, newName, newPhotoUrl || undefined);
-                                setEditingId(null);
-                              } else {
-                                onAdd(newName, newPhotoUrl || undefined);
-                              }
-                              setNewName('');
-                              setNewPhotoUrl('');
-                            }
-                          }}
-                          className="h-14 flex-1 sm:w-14 bg-brand-primary rounded-2xl flex items-center justify-center text-white shadow-lg shadow-brand-primary/20 hover:scale-105 active:scale-95 transition-all"
-                        >
-                          {editingId ? <Check size={24} /> : <Plus size={24} />}
-                        </button>
-                        {editingId && (
-                          <button 
-                            onClick={() => {
-                              setEditingId(null);
-                              setNewName('');
-                              setNewPhotoUrl('');
-                            }}
-                            className="h-14 w-14 bg-white/5 border border-white/10 rounded-2xl flex items-center justify-center text-white/40 hover:text-red-400 transition-all"
-                          >
-                            <X size={24} />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                  <div className="flex items-center gap-2">
-                    <input 
-                      type="text"
-                      value={newPhotoUrl}
-                      onChange={(e) => setNewPhotoUrl(e.target.value)}
-                      placeholder="Ou cole a URL da foto aqui..."
-                      className="flex-1 bg-white/5 border border-white/10 rounded-2xl py-3 px-6 text-white/60 focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all text-[10px]"
-                    />
-                    {newPhotoUrl && (
-                      <button 
-                        onClick={() => setNewPhotoUrl('')}
-                        className="p-2 text-white/20 hover:text-red-400 transition-colors"
-                      >
-                        <X size={14} />
-                      </button>
-                    )}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+              <div className="lg:col-span-12">
+                <div className="glass p-8 rounded-[48px] border border-white/10 flex flex-col md:flex-row md:items-center justify-between gap-8 mb-8 relative overflow-hidden">
+                  <div className="absolute top-0 right-0 p-12 opacity-5 pointer-events-none">
+                    <UserPlus size={160} />
                   </div>
-                </div>
-              </div>
+                  <div className="space-y-2 relative z-10">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-brand-primary/10 rounded-2xl flex items-center justify-center text-brand-primary">
+                        <UserPlus size={20} />
+                      </div>
+                      <h3 className="text-2xl font-black uppercase tracking-tight text-white leading-none">
+                        Cadastro de Funcionários
+                      </h3>
+                    </div>
+                    <p className="text-white/40 text-[11px] font-black uppercase tracking-[0.2em] ml-1">Gerencie a base de dados do empreendimento</p>
+                  </div>
 
-              <div className="space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between px-4 gap-4">
-                  <h3 className="text-[10px] font-black uppercase tracking-[0.4em] text-white/30 whitespace-nowrap">Todos os Funcionários ({queue.length})</h3>
-                  <div className="flex-1 max-w-md relative">
-                    <Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20" />
-                    <input 
-                      type="text"
-                      placeholder="Buscar por nome..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="w-full bg-white/5 border border-white/10 rounded-xl py-2 pl-10 pr-4 text-xs text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all placeholder:text-white/10"
-                    />
-                  </div>
                   <div className="flex gap-2">
                     <button 
                       onClick={() => {
                         const newQueue = queue.map(emp => ({ ...emp, isActive: true }));
                         onSetQueue(newQueue);
+                        addNotification('Todos os funcionários foram ativados.', 'success');
                       }}
-                      className="px-3 py-1.5 bg-green-500/10 text-green-400 hover:bg-green-500 hover:text-white rounded-lg text-[8px] font-black uppercase tracking-widest transition-all"
+                      className="px-6 py-3 bg-green-500/10 text-green-400 hover:bg-green-500 hover:text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border border-green-500/10"
                     >
                       Ativar Todos
                     </button>
@@ -1998,169 +1970,395 @@ const AdminPanel = ({
                       onClick={() => {
                         const newQueue = queue.map(emp => ({ ...emp, isActive: false }));
                         onSetQueue(newQueue);
+                        addNotification('Todos os funcionários foram desativados.', 'info');
                       }}
-                      className="px-3 py-1.5 bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white rounded-lg text-[8px] font-black uppercase tracking-widest transition-all"
+                      className="px-6 py-3 bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border border-red-500/10"
                     >
                       Desativar Todos
                     </button>
                   </div>
                 </div>
-                <div className="space-y-3">
+              </div>
+
+              <div className="lg:col-span-5 space-y-8">
+                <div className="glass p-8 rounded-[48px] border border-white/10 space-y-8 sticky top-8">
+                  <h3 className="text-[11px] font-black uppercase tracking-[0.4em] text-brand-secondary ml-2">
+                    {editingId ? 'EDITAR DADOS' : 'NOVO REGISTRO'}
+                  </h3>
+                  
+                  <div className="space-y-6">
+                    {isCameraOpen ? (
+                      <div className="relative rounded-[32px] overflow-hidden bg-black aspect-square shadow-2xl shadow-black/60">
+                        <video 
+                          ref={videoRef} 
+                          autoPlay 
+                          playsInline 
+                          className="w-full h-full object-cover mirror"
+                        />
+                        <canvas ref={canvasRef} className="hidden" />
+                        <div className="absolute bottom-8 inset-x-0 flex justify-center items-center gap-4">
+                          <button
+                            onClick={stopCamera}
+                            className="w-14 h-14 rounded-full bg-black/40 backdrop-blur-xl border border-white/20 flex items-center justify-center text-white hover:bg-red-500 transition-all shadow-xl"
+                          >
+                            <X size={24} />
+                          </button>
+                          <button
+                            onClick={capturePhoto}
+                            className="w-20 h-20 rounded-full bg-brand-primary flex items-center justify-center text-white shadow-[0_0_30px_rgba(5,150,105,0.6)] hover:scale-110 active:scale-90 transition-all border-4 border-white/20"
+                          >
+                            <Camera size={32} />
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-6">
+                        <div className="flex justify-center">
+                          <div className="relative group">
+                            <input 
+                              type="file"
+                              accept="image/*"
+                              onChange={handleFileUpload}
+                              className="hidden"
+                              id="photo-upload"
+                            />
+                            <label 
+                              htmlFor="photo-upload"
+                              className="w-40 h-40 bg-white/5 border-2 border-white/10 border-dashed rounded-[40px] flex flex-col items-center justify-center text-white/20 hover:text-brand-secondary hover:border-brand-secondary/50 cursor-pointer transition-all overflow-hidden group shadow-inner"
+                            >
+                              {newPhotoUrl ? (
+                                <img src={newPhotoUrl} alt="Preview" className="w-full h-full object-cover" />
+                              ) : (
+                                <>
+                                  {isUploading ? (
+                                    <div className="animate-spin rounded-full h-8 w-8 border-4 border-white/10 border-t-brand-secondary" />
+                                  ) : (
+                                    <>
+                                      <Upload size={32} className="mb-2 group-hover:scale-110 transition-transform" />
+                                      <span className="text-[9px] font-black uppercase tracking-widest">Enviar Foto</span>
+                                    </>
+                                  )}
+                                </>
+                              )}
+                            </label>
+                            <button
+                              onClick={() => startCamera('employees')}
+                              className="absolute -bottom-2 -right-2 w-12 h-12 bg-brand-primary text-white rounded-2xl flex items-center justify-center shadow-xl shadow-brand-primary/40 hover:scale-110 active:scale-95 transition-all outline outline-4 outline-brand-bg/50"
+                              title="Tirar Foto"
+                            >
+                              <Camera size={20} />
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="space-y-4">
+                          <div className="space-y-2">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-white/30 ml-4">Nome Social</label>
+                            <input 
+                              type="text"
+                              value={newName}
+                              onChange={(e) => setNewName(e.target.value)}
+                              placeholder="Digite o nome..."
+                              className="w-full bg-white/5 border border-white/10 rounded-2xl py-5 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all font-bold placeholder:text-white/10"
+                            />
+                          </div>
+
+                          <div className="space-y-2">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-white/30 ml-4">Link da Foto (Opcional)</label>
+                            <input 
+                              type="text"
+                              value={newPhotoUrl}
+                              onChange={(e) => setNewPhotoUrl(e.target.value)}
+                              placeholder="URL da imagem externa..."
+                              className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white/60 focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all text-[10px] font-medium"
+                            />
+                          </div>
+
+                          <div className="flex gap-3 pt-4">
+                            <button 
+                              onClick={() => {
+                                if (newName.trim()) {
+                                  if (editingId) {
+                                    onUpdateEmployee(editingId, newName, newPhotoUrl || undefined);
+                                    setEditingId(null);
+                                    addNotification('Funcionário atualizado!', 'success');
+                                  } else {
+                                    onAdd(newName, newPhotoUrl || undefined);
+                                    addNotification('Funcionário adicionado!', 'success');
+                                  }
+                                  setNewName('');
+                                  setNewPhotoUrl('');
+                                }
+                              }}
+                              className="flex-1 h-16 bg-brand-primary hover:bg-brand-primary/90 text-white rounded-[24px] flex items-center justify-center gap-3 text-xs font-black uppercase tracking-[0.2em] transition-all shadow-xl shadow-brand-primary/20 hover:scale-[1.02] active:scale-[0.98]"
+                            >
+                              {editingId ? <Check size={20} /> : <Plus size={20} />}
+                              {editingId ? 'Salvar Edição' : 'Cadastrar na Fila'}
+                            </button>
+                            {editingId && (
+                              <button 
+                                onClick={() => {
+                                  setEditingId(null);
+                                  setNewName('');
+                                  setNewPhotoUrl('');
+                                }}
+                                className="w-16 h-16 bg-white/5 border border-white/10 rounded-[24px] flex items-center justify-center text-white/40 hover:text-red-400 hover:bg-red-400/10 transition-all border border-white/10"
+                              >
+                                <X size={24} />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="lg:col-span-7 space-y-6">
+                <div className="flex items-center gap-4 px-4">
+                  <div className="w-1.5 h-6 bg-brand-primary rounded-full shadow-[0_0_12px_rgba(5,150,105,0.8)]" />
+                  <h3 className="text-[12px] font-black uppercase tracking-[0.4em] text-white">Lista de Funcionários</h3>
+                  <div className="flex-1" />
+                  <div className="relative w-full max-w-[200px]">
+                    <Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20" />
+                    <input 
+                      type="text"
+                      placeholder="Buscar..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="w-full bg-white/5 border border-white/10 rounded-2xl py-2.5 pl-10 pr-4 text-[10px] text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all placeholder:text-white/10"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3">
                   {isLoadingQueue ? (
-                    <SkeletonQueue />
+                    <div className="grid grid-cols-1 gap-3">
+                       {[1,2,3,4,5].map(i => <div key={i} className="glass h-20 rounded-3xl animate-pulse" />)}
+                    </div>
                   ) : (
                     <AnimatePresence mode="popLayout">
                       {[...queue]
                         .filter(emp => emp.name.toLowerCase().includes(searchTerm.toLowerCase()))
                         .sort((a, b) => a.name.localeCompare(b.name))
                         .map((emp) => (
-                        <motion.div 
-                          key={emp.id}
-                          layout
-                          initial={{ opacity: 0, y: 10 }}
-                          animate={{ opacity: emp.isActive ? 1 : 0.5, y: 0 }}
-                          exit={{ opacity: 0, scale: 0.9 }}
-                          className={`glass p-4 md:p-5 rounded-[24px] md:rounded-[32px] flex items-center justify-between group transition-opacity`}
-                        >
-                          <div className="flex items-center gap-4">
-                            <div className="w-12 h-12 md:w-16 md:h-16 bg-white/5 rounded-xl flex items-center justify-center text-white/40 font-bold text-lg overflow-hidden shrink-0">
-                              {emp.photoUrl ? (
-                                <img src={emp.photoUrl} alt={emp.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                              ) : (
-                                emp.position
-                              )}
+                          <motion.div 
+                            key={emp.id}
+                            layout
+                            initial={{ opacity: 0, x: -10 }}
+                            animate={{ opacity: emp.isActive ? 1 : 0.4, x: 0 }}
+                            exit={{ opacity: 0, scale: 0.9 }}
+                            className={`glass p-4 rounded-[32px] flex items-center justify-between group border border-white/5 hover:border-white/20 transition-all`}
+                          >
+                            <div className="flex items-center gap-4 min-w-0">
+                              <div className="w-14 h-14 bg-brand-bg/50 rounded-2xl flex items-center justify-center text-white/20 font-black text-xs overflow-hidden shrink-0 border border-white/5 group-hover:scale-105 transition-transform">
+                                {emp.photoUrl ? (
+                                  <img src={emp.photoUrl} alt={emp.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                ) : (
+                                  <Users size={20} />
+                                )}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <span className="text-white font-black uppercase tracking-tight text-base block mb-1">{emp.name}</span>
+                                <div className="flex items-center gap-2 mb-3">
+                                  <div className={`w-1.5 h-1.5 rounded-full ${emp.isActive ? 'bg-green-500' : 'bg-red-500'}`} />
+                                  <span className={`text-[9px] font-black uppercase tracking-widest ${emp.isActive ? 'text-green-500/60' : 'text-red-500/60'}`}>
+                                    {emp.isActive ? 'Ativo' : 'Inativo'}
+                                  </span>
+                                </div>
+                                
+                                <div className="flex items-center gap-1.5 transition-all">
+                                  <button 
+                                    onClick={() => {
+                                      if (settings.voiceCallEnabled) {
+                                        speak(`Teste de chamada: ${emp.name}`);
+                                      } else {
+                                        addNotification('Voz desativada. Ative nas configurações para testar.', 'info');
+                                      }
+                                    }}
+                                    className="w-10 h-10 rounded-xl bg-brand-primary/10 text-brand-primary flex items-center justify-center hover:bg-brand-primary hover:text-white transition-all"
+                                    title="Testar Chamada"
+                                  >
+                                    <Volume2 size={16} />
+                                  </button>
+                                  <button 
+                                    onClick={() => {
+                                      setEditingId(emp.id);
+                                      setNewName(emp.name);
+                                      setNewPhotoUrl(emp.photoUrl || '');
+                                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                                    }}
+                                    className="w-10 h-10 rounded-xl bg-white/5 text-white/40 flex items-center justify-center hover:bg-brand-primary hover:text-white transition-all"
+                                    title="Editar"
+                                  >
+                                    <Edit2 size={16} />
+                                  </button>
+                                  <button 
+                                    onClick={() => onToggleActive(emp.id, emp.isActive)}
+                                    className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${
+                                      emp.isActive 
+                                        ? 'bg-green-500/10 text-green-400 hover:bg-green-500 hover:text-white' 
+                                        : 'bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white'
+                                    }`}
+                                    title={emp.isActive ? 'Desativar' : 'Ativar'}
+                                  >
+                                    {emp.isActive ? <X size={16} /> : <Check size={16} />}
+                                  </button>
+                                  <button 
+                                    onClick={() => {
+                                      if (window.confirm(`Deseja realmente excluir ${emp.name}?`)) {
+                                        onRemove(emp.id);
+                                      }
+                                    }}
+                                    className="w-10 h-10 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white flex items-center justify-center transition-all"
+                                    title="Excluir"
+                                  >
+                                    <Trash2 size={16} />
+                                  </button>
+                                </div>
+                              </div>
                             </div>
-                            <div>
-                              <span className="text-white font-bold uppercase tracking-tight text-sm md:text-base block">{emp.name}</span>
-                              <span className={`text-[8px] font-black uppercase tracking-widest ${emp.isActive ? 'text-green-400' : 'text-red-400'}`}>
-                                {emp.isActive ? 'Ativo no Sorteio' : 'Inativo'}
-                              </span>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-1 md:gap-1.5 shrink-0">
-                            <button 
-                              onClick={() => speak(`Teste de áudio. Próximo na fila: ${emp.name}`, true)}
-                              className="w-8 h-8 md:w-9 md:h-9 rounded-lg md:rounded-xl bg-white/5 text-white/40 flex items-center justify-center hover:bg-brand-secondary hover:text-brand-bg transition-all"
-                              title="Testar Chamada de Voz"
-                            >
-                              <Volume2 size={14} className="md:w-4 md:h-4" />
-                            </button>
-                            <button 
-                              onClick={() => {
-                                setEditingId(emp.id);
-                                setNewName(emp.name);
-                                setNewPhotoUrl(emp.photoUrl || '');
-                                window.scrollTo({ top: 0, behavior: 'smooth' });
-                              }}
-                              className="w-8 h-8 md:w-9 md:h-9 rounded-lg md:rounded-xl bg-white/5 text-white/40 flex items-center justify-center hover:bg-brand-primary hover:text-white transition-all"
-                              title="Editar"
-                            >
-                              <Edit2 size={14} className="md:w-4 md:h-4" />
-                            </button>
-                            <button 
-                              onClick={() => onToggleActive(emp.id, emp.isActive)}
-                              className={`w-8 h-8 md:w-9 md:h-9 rounded-lg md:rounded-xl flex items-center justify-center transition-all ${emp.isActive ? 'bg-green-500/10 text-green-400 hover:bg-green-500 hover:text-white' : 'bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white'}`}
-                              title={emp.isActive ? 'Desativar' : 'Ativar'}
-                            >
-                              {emp.isActive ? <Check size={14} className="md:w-4 md:h-4" /> : <X size={14} className="md:w-4 md:h-4" />}
-                            </button>
-                            <button 
-                              onClick={() => onRemove(emp.id)}
-                              className="w-8 h-8 md:w-9 md:h-9 rounded-lg md:rounded-xl bg-red-500/10 text-red-500 flex items-center justify-center lg:opacity-0 group-hover:opacity-100 transition-all hover:bg-red-500 hover:text-white"
-                              title="Remover"
-                            >
-                              <Trash2 size={14} className="md:w-4 md:h-4" />
-                            </button>
-                          </div>
-                        </motion.div>
-                      ))}
+                          </motion.div>
+                        ))}
                     </AnimatePresence>
+                  )}
+                  {!isLoadingQueue && queue.length === 0 && (
+                    <div className="glass p-20 rounded-[48px] text-center border border-dashed border-white/5">
+                      <p className="text-white/20 text-[10px] font-black uppercase tracking-widest">Nenhum funcionário cadastrado.</p>
+                    </div>
                   )}
                 </div>
               </div>
             </div>
-          </div>
           </AdminTabLoader>
         )}
 
         {activeTab === 'lottery' && (
           <AdminTabLoader isLoading={isLoadingSettings} skeleton={<SkeletonSettings />}>
-            <div className="space-y-8">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
-                {/* Coluna 1: Sorteio Casual */}
-                <div className="glass p-8 rounded-[40px] space-y-6 text-center relative overflow-hidden">
-                {isShuffling && (
-                  <motion.div 
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    className="absolute inset-0 bg-brand-bg/90 backdrop-blur-sm z-20 flex flex-col items-center justify-center p-6"
-                  >
-                    <div className="relative mb-6">
-                      <motion.div 
-                        animate={{ rotate: 360 }}
-                        transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-                        className="w-24 h-24 border-b-2 border-brand-secondary rounded-full"
-                      />
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <AnimatePresence mode="wait">
-                          {shuffleDisplay && (
-                            <motion.div
-                              key={shuffleDisplay.id}
-                              initial={{ scale: 0.5, opacity: 0 }}
-                              animate={{ scale: 1, opacity: 1 }}
-                              exit={{ scale: 1.5, opacity: 0 }}
-                              className="w-16 h-16 rounded-2xl bg-white/10 overflow-hidden border border-white/20"
-                            >
-                              {shuffleDisplay.photoUrl ? (
-                                <img src={shuffleDisplay.photoUrl} alt="" className="w-full h-full object-cover" />
-                              ) : (
-                                <div className="w-full h-full flex items-center justify-center text-xl font-bold text-white">
-                                  {shuffleDisplay.name.charAt(0)}
-                                </div>
-                              )}
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+              {/* Sorteio Casual Card */}
+              <div className="lg:col-span-12">
+                <div className="glass p-10 rounded-[48px] border border-white/10 relative overflow-hidden group shadow-2xl shadow-brand-secondary/5">
+                  <div className="absolute top-0 right-0 p-12 opacity-5 pointer-events-none group-hover:scale-110 group-hover:rotate-12 transition-transform duration-700">
+                    <Dices size={200} />
+                  </div>
+                  
+                  {isShuffling && (
+                    <motion.div 
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      className="absolute inset-0 bg-brand-bg/95 backdrop-blur-xl z-50 flex flex-col items-center justify-center p-8"
+                    >
+                      <div className="relative mb-12">
+                        <motion.div 
+                          animate={{ rotate: 360 }}
+                          transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
+                          className="w-48 h-48 border-2 border-dashed border-brand-secondary/30 rounded-full"
+                        />
+                        <motion.div 
+                          animate={{ rotate: -360 }}
+                          transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+                          className="absolute inset-4 border-2 border-brand-primary/40 rounded-full"
+                        />
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <AnimatePresence mode="wait">
+                            {shuffleDisplay && (
+                              <motion.div
+                                key={shuffleDisplay.id}
+                                initial={{ scale: 0.2, opacity: 0, rotate: -20 }}
+                                animate={{ scale: 1, opacity: 1, rotate: 0 }}
+                                exit={{ scale: 2, opacity: 0, rotate: 20 }}
+                                className="w-28 h-28 rounded-3xl bg-white/10 overflow-hidden border-2 border-white/20 shadow-2xl"
+                              >
+                                {shuffleDisplay.photoUrl ? (
+                                  <img src={shuffleDisplay.photoUrl} alt="" className="w-full h-full object-cover" />
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center text-4xl font-black text-white bg-gradient-to-br from-brand-primary to-brand-secondary">
+                                    {shuffleDisplay.name.charAt(0)}
+                                  </div>
+                                )}
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                        </div>
+                      </div>
+                      <div className="space-y-3 text-center">
+                        <h4 className="text-brand-secondary font-black uppercase tracking-[0.6em] text-sm animate-pulse">Processando Embaralhamento</h4>
+                        <p className="text-white/20 text-[10px] font-black uppercase tracking-widest">Aguarde a geração da nova sequência</p>
+                      </div>
+                    </motion.div>
+                  )}
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-center relative z-10">
+                    <div className="space-y-6">
+                      <div className="flex items-center gap-4">
+                        <div className="w-16 h-16 bg-brand-secondary/10 rounded-3xl flex items-center justify-center text-brand-secondary shadow-inner">
+                          <Sparkles size={32} />
+                        </div>
+                        <div className="space-y-1">
+                          <h3 className="text-3xl font-black uppercase tracking-tight text-white leading-none">Sorteio Casual</h3>
+                          <p className="text-white/40 text-[11px] font-black uppercase tracking-[0.2em]">Acionamento Manual Instantâneo</p>
+                        </div>
+                      </div>
+                      <p className="text-white/60 text-sm leading-relaxed max-w-md">
+                        O sorteio casual permite que você gere uma nova ordem de chamada imediatamente. Todos os funcionários ativos serão embaralhados aleatoriamente.
+                      </p>
+                      
+                      <div className="flex flex-wrap gap-4 pt-2">
+                        <div className="flex items-center gap-3 px-6 py-3 bg-white/5 rounded-2xl border border-white/5">
+                          <Users size={16} className="text-brand-secondary" />
+                          <span className="text-xs font-black uppercase tracking-widest text-white/80">
+                            {queue.filter(e => e.isActive).length} Ativos
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3 px-6 py-3 bg-white/5 rounded-2xl border border-white/5">
+                          <Activity size={16} className="text-brand-primary" />
+                          <span className="text-xs font-black uppercase tracking-widest text-white/80">Pronto</span>
+                        </div>
                       </div>
                     </div>
-                    <h4 className="text-brand-secondary font-black uppercase tracking-[0.3em] text-xs animate-pulse">Embaralhando...</h4>
-                  </motion.div>
-                )}
 
-                <div className="w-20 h-20 bg-brand-secondary/10 rounded-3xl flex items-center justify-center text-brand-secondary mx-auto">
-                  <Dices size={40} />
+                    <div className="space-y-4">
+                      <button 
+                        onClick={handleShuffleClick}
+                        disabled={isShuffling || queue.filter(e => e.isActive).length < 2}
+                        className="w-full h-24 bg-brand-secondary hover:bg-brand-secondary/90 text-brand-bg font-black uppercase tracking-[0.3em] text-sm rounded-[32px] shadow-2xl shadow-brand-secondary/20 transition-all active:scale-95 flex items-center justify-center gap-4 disabled:opacity-50 disabled:grayscale group"
+                      >
+                        <Dices size={28} className="group-hover:rotate-12 transition-transform" />
+                        Gerar Nova Fila Agora
+                      </button>
+                      {queue.filter(e => e.isActive).length < 2 && (
+                        <div className="flex items-center justify-center gap-2 text-red-400/80">
+                          <AlertTriangle size={14} />
+                          <span className="text-[10px] font-black uppercase tracking-widest animate-pulse">
+                            Mínimo de 2 funcionários ativos necessário
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <h3 className="text-lg font-bold uppercase tracking-tight text-white">Sorteio Casual</h3>
-                  <p className="text-white/40 text-[10px] font-medium leading-relaxed">Realize um sorteio agora mesmo, independente da programação.</p>
-                </div>
-                <button 
-                  onClick={handleShuffleClick}
-                  disabled={isShuffling || queue.filter(e => e.isActive).length < 2}
-                  className="w-full bg-brand-secondary hover:bg-brand-secondary/80 text-brand-bg font-black uppercase tracking-[0.2em] py-4 rounded-2xl shadow-lg shadow-brand-secondary/20 transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <Sparkles size={18} />
-                  Sortear Agora
-                </button>
-                {queue.filter(e => e.isActive).length < 2 && (
-                  <p className="text-red-400/60 text-[8px] font-bold uppercase tracking-widest animate-pulse">
-                    Mínimo de 2 funcionários ativos necessário
-                  </p>
-                )}
               </div>
 
-              {/* Coluna 2: Sorteio Programado e Histórico */}
-              <div className="space-y-8">
-                {/* Sorteio Programado Card */}
-                <div className="glass p-8 rounded-[40px] space-y-6">
+              {/* Sorteio Programado Card */}
+              <div className="lg:col-span-6 space-y-4">
+                <div className="flex items-center gap-4 px-4">
+                  <div className="w-1.5 h-6 bg-blue-500 rounded-full shadow-[0_0_12px_rgba(59,130,246,0.8)]" />
+                  <h3 className="text-[12px] font-black uppercase tracking-[0.4em] text-white">Programação Automática</h3>
+                </div>
+                
+                <div className="glass p-8 rounded-[48px] border border-white/10 space-y-8 h-full bg-blue-500/[0.02]">
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 bg-blue-500/10 rounded-2xl flex items-center justify-center text-blue-500">
-                        <Timer size={24} />
+                    <div className="flex items-center gap-5">
+                      <div className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-colors shadow-inner ${settings.lotteryEnabled ? 'bg-blue-500/20 text-blue-400' : 'bg-white/5 text-white/20'}`}>
+                        <Timer size={28} />
                       </div>
-                      <div className="text-left">
-                        <h3 className="text-lg font-bold uppercase tracking-tight text-white">Sorteio Programado</h3>
-                        <p className="text-white/40 text-[10px] font-medium leading-relaxed">Configuração de sorteio automático.</p>
+                      <div className="text-left space-y-1">
+                        <h4 className="text-lg font-black uppercase tracking-tight text-white leading-none">Sorteio Diário</h4>
+                        <span className={`text-[9px] font-black uppercase tracking-widest ${settings.lotteryEnabled ? 'text-green-500' : 'text-white/20'}`}>
+                          {settings.lotteryEnabled ? 'Ativado pelo sistema' : 'Em pausa manual'}
+                        </span>
                       </div>
                     </div>
                     <button 
@@ -2172,94 +2370,130 @@ const AdminPanel = ({
                           lotteryEnabledBy: enabled ? currentAdminName : (settings.lotteryEnabledBy || '')
                         });
                       }}
-                      className={`w-12 h-6 rounded-full transition-all relative ${settings.lotteryEnabled ? 'bg-green-500' : 'bg-white/10'}`}
+                      className={`w-16 h-8 rounded-full transition-all relative p-1 ${settings.lotteryEnabled ? 'bg-green-500 shadow-[0_0_15px_rgba(34,197,94,0.4)]' : 'bg-white/10'}`}
                     >
-                      <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${settings.lotteryEnabled ? 'right-1' : 'left-1'}`} />
+                      <motion.div 
+                        animate={{ x: settings.lotteryEnabled ? 32 : 0 }}
+                        className="w-6 h-6 rounded-full bg-white shadow-xl"
+                      />
                     </button>
                   </div>
 
-                  <div className="space-y-4 pt-2">
-                    <div className="grid grid-cols-7 gap-1">
-                      {['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((day, i) => (
-                        <button
-                          key={i}
-                          onClick={() => {
-                            const newDays = settings.lotteryDays.includes(i)
-                              ? settings.lotteryDays.filter(d => d !== i)
-                              : [...settings.lotteryDays, i].sort();
-                            onUpdateSettings({ ...settings, lotteryDays: newDays });
-                          }}
-                          className={`py-2 rounded-lg text-[10px] font-black transition-all ${
-                            settings.lotteryDays.includes(i)
-                              ? 'bg-brand-secondary text-brand-bg shadow-sm'
-                              : 'bg-white/5 text-white/40 hover:bg-white/10'
-                          }`}
-                        >
-                          {day}
-                        </button>
-                      ))}
+                  <div className="space-y-6">
+                    <div className="space-y-3">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-white/30 ml-4">Dias da Semana</label>
+                      <div className="grid grid-cols-7 gap-1.5">
+                        {['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((day, i) => {
+                          const isSelected = settings.lotteryDays.includes(i);
+                          return (
+                            <button
+                              key={i}
+                              onClick={() => {
+                                const newDays = isSelected
+                                  ? settings.lotteryDays.filter(d => d !== i)
+                                  : [...settings.lotteryDays, i].sort();
+                                onUpdateSettings({ ...settings, lotteryDays: newDays });
+                              }}
+                              className={`h-12 rounded-xl text-[11px] font-black transition-all border ${
+                                isSelected
+                                  ? 'bg-blue-500 border-blue-400 text-white shadow-lg shadow-blue-500/20'
+                                  : 'bg-white/5 border-white/5 text-white/40 hover:bg-white/10'
+                              }`}
+                            >
+                              {day}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
 
-                    <div className="flex items-center gap-3 bg-white/5 border border-white/5 rounded-2xl p-3">
-                      <Clock size={16} className="text-white/20" />
-                      <input 
-                        type="time" 
-                        value={settings.lotteryTime}
-                        onChange={(e) => onUpdateSettings({ ...settings, lotteryTime: e.target.value })}
-                        className="bg-transparent text-white text-xs font-bold focus:outline-none w-full [color-scheme:dark]"
-                      />
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-white/30 ml-4">Horário do Evento</label>
+                      <div className="flex items-center gap-4 bg-white/5 border border-white/5 rounded-3xl p-5 group hover:border-blue-500/30 transition-all">
+                        <Clock size={20} className="text-blue-500" />
+                        <input 
+                          type="time" 
+                          value={settings.lotteryTime}
+                          onChange={(e) => onUpdateSettings({ ...settings, lotteryTime: e.target.value })}
+                          className="bg-transparent text-white text-xl font-black focus:outline-none w-full [color-scheme:dark] tracking-tighter"
+                        />
+                      </div>
                     </div>
                   </div>
 
-                  <div className="bg-blue-500/5 border border-blue-500/10 rounded-2xl p-4">
-                    <p className="text-[10px] text-blue-400/80 leading-relaxed font-medium">
-                      O sorteio automático será realizado nos dias e horários selecionados, seguindo a mesma lógica do sorteio casual.
+                  <div className="p-5 bg-blue-500/5 rounded-3xl border border-blue-500/10">
+                    <p className="text-[10px] text-blue-400/80 leading-relaxed font-black uppercase tracking-widest text-center">
+                      O sistema gera a fila automaticamente no horário definido
                     </p>
                   </div>
                 </div>
+              </div>
 
-                {/* Histórico de Sorteios na aba Sorteio */}
-                <div className="glass p-8 rounded-[40px] space-y-6">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-xl font-bold uppercase tracking-tight flex items-center gap-3">
-                        <Trophy className="text-brand-secondary" size={20} /> Histórico
-                      </h3>
+              {/* Sorteio Público Card */}
+              <div className="lg:col-span-6 space-y-4">
+                <div className="flex items-center gap-4 px-4">
+                  <div className="w-1.5 h-6 bg-purple-500 rounded-full shadow-[0_0_12px_rgba(168,85,247,0.8)]" />
+                  <h3 className="text-[12px] font-black uppercase tracking-[0.4em] text-white">Liberação Pública</h3>
+                </div>
+
+                <div className="glass p-8 rounded-[48px] border border-white/10 space-y-8 h-full bg-purple-500/[0.02]">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-5">
+                      <div className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-colors shadow-inner ${settings.publicShuffleEnabled ? 'bg-purple-500/20 text-purple-400' : 'bg-white/5 text-white/20'}`}>
+                        <Globe size={28} />
+                      </div>
+                      <div className="text-left space-y-1">
+                        <h4 className="text-lg font-black uppercase tracking-tight text-white leading-none">Sorteio Público</h4>
+                        <span className={`text-[9px] font-black uppercase tracking-widest ${settings.publicShuffleEnabled ? 'text-purple-400' : 'text-white/20'}`}>
+                          {settings.publicShuffleEnabled ? 'Botão visível para todos' : 'Acesso restrito a admins'}
+                        </span>
+                      </div>
                     </div>
-                    <div className="space-y-4 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
-                      {history.length === 0 ? (
-                        <div className="text-center py-6 text-white/20">
-                          <Trophy size={32} className="mx-auto mb-2 opacity-10" />
-                          <p className="text-[10px] font-black uppercase tracking-widest">Nenhum sorteio</p>
-                        </div>
-                      ) : (
-                        <div className="space-y-3">
-                          {history.slice(0, 5).map((item) => (
-                            <div key={item.id} className="bg-white/5 border border-white/10 rounded-2xl p-3 flex items-center justify-between group hover:bg-white/10 transition-all">
-                              <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-lg bg-brand-secondary/10 overflow-hidden flex items-center justify-center text-brand-secondary shrink-0 border border-white/5">
-                                  {item.fullList?.[0]?.photoUrl ? (
-                                    <img src={item.fullList[0].photoUrl} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                                  ) : (
-                                    <Trophy size={14} />
-                                  )}
-                                </div>
-                                <div className="min-w-0">
-                                  <p className="text-orange-400 font-bold text-xs truncate uppercase tracking-tight">{item.winnerName}</p>
-                                  <p className="text-[8px] text-white/40 font-black uppercase">
-                                    {new Date(item.timestamp).toLocaleDateString('pt-BR')}
-                                  </p>
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                          {history.length > 5 && (
-                            <p className="text-center text-[8px] text-white/20 font-black uppercase tracking-[0.2em] py-2">
-                              + {history.length - 5} registros no histórico completo
-                            </p>
-                          )}
-                        </div>
-                      )}
+                    <button 
+                      onClick={() => {
+                        onUpdateSettings({ 
+                          ...settings, 
+                          publicShuffleEnabled: !settings.publicShuffleEnabled
+                        });
+                      }}
+                      className={`w-16 h-8 rounded-full transition-all relative p-1 ${settings.publicShuffleEnabled ? 'bg-purple-500 shadow-[0_0_15px_rgba(168,85,247,0.4)]' : 'bg-white/10'}`}
+                    >
+                      <motion.div 
+                        animate={{ x: settings.publicShuffleEnabled ? 32 : 0 }}
+                        className="w-6 h-6 rounded-full bg-white shadow-xl"
+                      />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-white/30 ml-4">Início Liberação</label>
+                      <div className="flex items-center gap-3 bg-white/5 border border-white/5 rounded-3xl p-5 group hover:border-purple-500/30 transition-all">
+                        <input 
+                          type="time" 
+                          value={settings.publicShuffleStartTime || '08:00'}
+                          onChange={(e) => onUpdateSettings({ ...settings, publicShuffleStartTime: e.target.value })}
+                          className="bg-transparent text-white text-lg font-black focus:outline-none w-full [color-scheme:dark] tracking-tighter"
+                        />
+                      </div>
                     </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-white/30 ml-4">Fim Liberação</label>
+                      <div className="flex items-center gap-3 bg-white/5 border border-white/5 rounded-3xl p-5 group hover:border-purple-500/30 transition-all">
+                        <input 
+                          type="time" 
+                          value={settings.publicShuffleEndTime || '18:00'}
+                          onChange={(e) => onUpdateSettings({ ...settings, publicShuffleEndTime: e.target.value })}
+                          className="bg-transparent text-white text-lg font-black focus:outline-none w-full [color-scheme:dark] tracking-tighter"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="p-5 bg-purple-500/5 rounded-3xl border border-purple-500/10">
+                    <p className="text-[10px] text-purple-400/80 leading-relaxed font-black uppercase tracking-widest text-center">
+                      Qualquer usuário poderá acionar o sorteio no período definido
+                    </p>
                   </div>
                 </div>
               </div>
@@ -2268,134 +2502,113 @@ const AdminPanel = ({
         )}
 
         {activeTab === 'database' && currentUserRole === 'admin' && (
-          <div className="space-y-8">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              <div className="glass p-8 rounded-[40px] space-y-6 relative overflow-hidden group">
-                <div className="w-16 h-16 bg-brand-primary/10 rounded-2xl flex items-center justify-center text-brand-primary">
-                  <Download size={32} />
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+            <div className="lg:col-span-12">
+              <div className="glass p-10 rounded-[48px] border border-white/10 flex flex-col md:flex-row items-center justify-between gap-8 mb-4 relative overflow-hidden bg-brand-primary/[0.02]">
+                <div className="absolute top-0 right-0 p-12 opacity-5 pointer-events-none">
+                  <Database size={200} />
                 </div>
-                <div className="space-y-2">
-                  <h3 className="text-xl font-bold uppercase tracking-tight text-white">Exportar Dados</h3>
-                  <p className="text-white/40 text-xs leading-relaxed">Baixe a lista atual de funcionários para backup ou transferência.</p>
+                <div className="space-y-3 relative z-10">
+                  <div className="flex items-center gap-4">
+                    <div className="w-16 h-16 bg-brand-primary/10 rounded-3xl flex items-center justify-center text-brand-primary">
+                      <Database size={32} />
+                    </div>
+                    <div className="space-y-1">
+                      <h3 className="text-3xl font-black uppercase tracking-tight text-white leading-none">Manutenção de Dados</h3>
+                      <p className="text-white/40 text-[11px] font-black uppercase tracking-[0.2em]">Gestão Avançada da Base de Funcionários</p>
+                    </div>
+                  </div>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              </div>
+            </div>
+
+            <div className="lg:col-span-6 space-y-4">
+              <div className="flex items-center gap-4 px-4">
+                <div className="w-1.5 h-6 bg-brand-primary rounded-full shadow-[0_0_12px_rgba(5,150,105,0.8)]" />
+                <h3 className="text-[12px] font-black uppercase tracking-[0.4em] text-white">Backups e Exportação</h3>
+              </div>
+              <div className="glass p-8 rounded-[48px] border border-white/10 space-y-6">
+                <p className="text-white/40 text-xs leading-relaxed px-2">Baixe o estado atual da sua fila para manter backups de segurança ou migrar dados.</p>
+                <div className="grid grid-cols-1 gap-3">
                   <button 
                     onClick={handleExportXlsx}
-                    className="w-full bg-green-500/20 hover:bg-green-500/30 text-green-400 font-black uppercase tracking-widest py-4 rounded-2xl transition-all flex items-center justify-center gap-3 text-[10px]"
+                    className="w-full h-20 bg-green-500/10 hover:bg-green-500 text-green-400 hover:text-white font-black uppercase tracking-[0.2em] rounded-3xl transition-all flex items-center justify-center gap-4 border border-green-500/20 group"
                   >
-                    <Download size={16} /> Exportar XLSX
+                    <div className="p-3 bg-green-500/10 rounded-2xl group-hover:bg-white/20 transition-all">
+                      <Archive size={24} />
+                    </div>
+                    Planilha Excel (XLSX)
                   </button>
                   <button 
                     onClick={handleExport}
-                    className="w-full bg-white/5 hover:bg-white/10 text-white font-black uppercase tracking-widest py-4 rounded-2xl transition-all flex items-center justify-center gap-3 text-[10px]"
+                    className="w-full h-20 bg-white/5 hover:bg-white text-white/60 hover:text-brand-bg font-black uppercase tracking-[0.2em] rounded-3xl transition-all flex items-center justify-center gap-4 border border-white/5 group"
                   >
-                    <Download size={16} /> Exportar JSON
+                    <div className="p-3 bg-white/10 rounded-2xl group-hover:bg-brand-bg/5 transition-all">
+                      <Code size={24} />
+                    </div>
+                    Arquivo JSON (Backup)
                   </button>
                 </div>
               </div>
+            </div>
 
-              <div className="glass p-8 rounded-[40px] space-y-6 relative overflow-hidden group">
-                <div className="w-16 h-16 bg-brand-secondary/10 rounded-2xl flex items-center justify-center text-brand-secondary">
-                  <Upload size={32} />
-                </div>
-                <div className="space-y-2">
-                  <h3 className="text-xl font-bold uppercase tracking-tight text-white">Importar Dados</h3>
-                  <p className="text-white/40 text-xs leading-relaxed">Carregue uma lista de funcionários. Isso substituirá a fila atual.</p>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <label className="w-full bg-brand-secondary hover:bg-brand-secondary/80 text-brand-bg font-black uppercase tracking-widest py-4 rounded-2xl transition-all flex items-center justify-center gap-3 cursor-pointer text-[10px]">
-                    <Plus size={16} /> Importar XLSX
-                    <input 
-                      type="file" 
-                      accept=".xlsx, .xls" 
-                      className="hidden" 
-                      onChange={handleImportXlsx}
-                    />
+            <div className="lg:col-span-6 space-y-4">
+              <div className="flex items-center gap-4 px-4">
+                <div className="w-1.5 h-6 bg-brand-secondary rounded-full shadow-[0_0_12px_rgba(245,158,11,0.8)]" />
+                <h3 className="text-[12px] font-black uppercase tracking-[0.4em] text-white">Restauração e Importação</h3>
+              </div>
+              <div className="glass p-8 rounded-[48px] border border-white/10 space-y-6 bg-brand-secondary/[0.02]">
+                <p className="text-white/40 text-xs leading-relaxed px-2">Importe dados de fontes externas. <strong className="text-brand-secondary">Atenção: Isso substituirá todos os dados atuais.</strong></p>
+                <div className="grid grid-cols-1 gap-3">
+                  <label className="w-full h-20 bg-brand-secondary hover:bg-brand-secondary/90 text-brand-bg font-black uppercase tracking-[0.2em] rounded-3xl transition-all flex items-center justify-center gap-4 cursor-pointer group shadow-xl shadow-brand-secondary/10">
+                    <div className="p-3 bg-brand-bg/10 rounded-2xl group-hover:scale-110 transition-all">
+                      <Upload size={24} />
+                    </div>
+                    Importar Planilha
+                    <input type="file" accept=".xlsx, .xls" className="hidden" onChange={handleImportXlsx} />
                   </label>
-                  <label className="w-full bg-white/10 hover:bg-white/20 text-white font-black uppercase tracking-widest py-4 rounded-2xl transition-all flex items-center justify-center gap-3 cursor-pointer text-[10px]">
-                    <Plus size={16} /> Importar JSON
-                    <input 
-                      type="file" 
-                      accept=".json" 
-                      className="hidden" 
-                      onChange={handleImport}
-                    />
+                  <label className="w-full h-20 bg-white/5 hover:bg-white/10 text-white/40 hover:text-white font-black uppercase tracking-[0.2em] rounded-3xl transition-all flex items-center justify-center gap-4 cursor-pointer border border-white/10 group">
+                    <div className="p-3 bg-white/5 rounded-2xl group-hover:bg-white/10 transition-all">
+                      <Plus size={24} />
+                    </div>
+                    Importar JSON
+                    <input type="file" accept=".json" className="hidden" onChange={handleImport} />
                   </label>
                 </div>
               </div>
             </div>
 
-            <div className="glass p-8 rounded-[40px] space-y-6">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-red-500/10 rounded-2xl flex items-center justify-center text-red-500">
-                  <Trash2 size={24} />
-                </div>
-                <div>
-                  <h3 className="text-xl font-bold uppercase tracking-tight text-white">Limpeza de Dados</h3>
-                  <p className="text-white/40 text-xs">Ações irreversíveis para manutenção do sistema.</p>
-                </div>
+            <div className="lg:col-span-12 space-y-4 mt-4">
+               <div className="flex items-center gap-4 px-4">
+                <div className="w-1.5 h-6 bg-red-500 rounded-full shadow-[0_0_12px_rgba(239,68,68,0.8)]" />
+                <h3 className="text-[12px] font-black uppercase tracking-[0.4em] text-white">Operações Críticas</h3>
               </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <button 
-                  onClick={() => {
-                    onClearHistory();
-                  }}
-                  className="p-6 rounded-3xl bg-white/5 border border-white/5 hover:bg-red-500/10 hover:border-red-500/20 transition-all text-left group"
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[10px] font-black uppercase tracking-widest text-white/60 group-hover:text-red-400">Limpar Histórico</span>
-                    <Clock size={16} className="text-white/20 group-hover:text-red-400" />
-                  </div>
-                  <p className="text-[10px] text-white/30 leading-relaxed">Remove permanentemente todos os registros de sorteios realizados.</p>
+              <div className="glass p-10 rounded-[48px] border border-red-500/10 grid grid-cols-1 md:grid-cols-3 gap-6 bg-red-500/[0.02]">
+                <button onClick={onClearHistory} className="p-8 rounded-[32px] bg-white/5 border border-white/5 hover:bg-red-500 hover:text-white transition-all text-left group">
+                  <Trash2 size={24} className="mb-4 text-red-500 group-hover:text-white transition-colors" />
+                  <h4 className="text-[11px] font-black uppercase tracking-widest mb-1">Limpar Histórico</h4>
+                  <p className="text-[9px] font-bold uppercase tracking-widest opacity-40 group-hover:opacity-100 transition-opacity">Remove todos os registros permanentes</p>
                 </button>
-
-                <button 
-                  onClick={() => {
-                    onResetQueue();
-                  }}
-                  className="p-6 rounded-3xl bg-white/5 border border-white/5 hover:bg-red-500/10 hover:border-red-500/20 transition-all text-left group"
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[10px] font-black uppercase tracking-widest text-white/60 group-hover:text-red-400">Limpar Fila</span>
-                    <Users size={16} className="text-white/20 group-hover:text-red-400" />
-                  </div>
-                  <p className="text-[10px] text-white/30 leading-relaxed">Reseta as posições e o status de sorteio de todos os funcionários sem excluí-los.</p>
+                <button onClick={onResetQueue} className="p-8 rounded-[32px] bg-white/5 border border-white/5 hover:bg-red-500 hover:text-white transition-all text-left group">
+                  <Users size={24} className="mb-4 text-red-500 group-hover:text-white transition-colors" />
+                  <h4 className="text-[11px] font-black uppercase tracking-widest mb-1">Limpar Fila</h4>
+                  <p className="text-[9px] font-bold uppercase tracking-widest opacity-40 group-hover:opacity-100 transition-opacity">Zera status sem excluir funcionários</p>
                 </button>
-
-                <button 
-                  onClick={() => {
-                    onUpdateSettings({ 
-                      ...settings, 
-                      currentCallPosition: 1,
-                      lastCalledEmployeeId: null,
-                      lastCalledTimestamp: null
-                    });
-                    addNotification('Sequência de chamada resetada!', 'success');
-                  }}
-                  className="p-6 rounded-3xl bg-white/5 border border-white/5 hover:bg-brand-secondary/10 hover:border-brand-secondary/20 transition-all text-left group"
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[10px] font-black uppercase tracking-widest text-white/60 group-hover:text-brand-secondary">Resetar Chamada</span>
-                    <RefreshCw size={16} className="text-white/20 group-hover:text-brand-secondary" />
-                  </div>
-                  <p className="text-[10px] text-white/30 leading-relaxed">Reinicia a sequência de chamadas para o início (1º da fila).</p>
+                <button onClick={() => { onUpdateSettings({ ...settings, currentCallPosition: 1 }); addNotification('Sequência resetada!', 'success'); }} className="p-8 rounded-[32px] bg-white/5 border border-white/5 hover:bg-brand-secondary hover:text-brand-bg transition-all text-left group">
+                  <RefreshCw size={24} className="mb-4 text-brand-secondary group-hover:text-brand-bg transition-colors" />
+                  <h4 className="text-[11px] font-black uppercase tracking-widest mb-1">Resetar Chamada</h4>
+                  <p className="text-[9px] font-bold uppercase tracking-widest opacity-40 group-hover:opacity-100 transition-opacity">Volta a contagem para o 1º da fila</p>
                 </button>
               </div>
             </div>
 
             <AnimatePresence>
               {dbStatus && (
-                <motion.div 
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  className={`p-4 rounded-2xl text-center text-[10px] font-black uppercase tracking-widest ${
-                    dbStatus.type === 'success' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
-                  }`}
-                >
-                  {dbStatus.message}
-                </motion.div>
+                <div className="lg:col-span-12">
+                  <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className={`p-6 rounded-[24px] text-center text-[10px] font-black uppercase tracking-[0.4em] ${dbStatus.type === 'success' ? 'bg-green-500/10 text-green-400 border border-green-500/20 shadow-xl shadow-green-500/5' : 'bg-red-500/10 text-red-400 border border-red-500/20 shadow-xl shadow-red-500/5'}`}>
+                    {dbStatus.message}
+                  </motion.div>
+                </div>
               )}
             </AnimatePresence>
           </div>
@@ -2403,1050 +2616,676 @@ const AdminPanel = ({
 
         {activeTab === 'history' && (
           <AdminTabLoader isLoading={isLoadingHistory} skeleton={<SkeletonHistory />}>
-            <div className="space-y-8">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 bg-white/5 p-6 rounded-[32px] border border-white/5">
-                <div className="flex flex-col gap-2">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-brand-secondary/10 rounded-2xl flex items-center justify-center text-brand-secondary">
-                      <Trophy size={20} />
-                    </div>
-                    <h3 className="text-xl font-bold uppercase tracking-tight text-white">
-                      Histórico de Sorteios
-                    </h3>
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+              <div className="lg:col-span-12">
+                <div className="glass p-10 rounded-[48px] border border-white/10 flex flex-col md:flex-row items-center justify-between gap-8 mb-4 relative overflow-hidden bg-brand-secondary/[0.02]">
+                  <div className="absolute top-0 right-0 p-12 opacity-5 pointer-events-none">
+                    <History size={200} />
                   </div>
+                  <div className="space-y-3 relative z-10">
+                    <div className="flex items-center gap-4">
+                      <div className="w-16 h-16 bg-brand-secondary/10 rounded-3xl flex items-center justify-center text-brand-secondary">
+                        <Trophy size={32} />
+                      </div>
+                      <div className="space-y-1">
+                        <h2 className="text-3xl font-black uppercase tracking-tight text-white leading-none">Registro de Glórias</h2>
+                        <p className="text-white/40 text-[11px] font-black uppercase tracking-[0.2em]">Histórico Completo de Sorteios Realizados</p>
+                      </div>
+                    </div>
+                  </div>
+
                   {history.length > 0 && (
-                    <div className="flex items-center gap-2 pl-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-brand-secondary animate-pulse" />
-                      <span className="text-[10px] font-black uppercase tracking-widest text-white/40">
-                        Último sorteio em: {new Date(history[0].timestamp).toLocaleDateString('pt-BR')}
-                      </span>
+                    <div className="flex items-center gap-3 relative z-10">
+                      <div className="flex items-center gap-2 p-2 bg-white/5 rounded-3xl border border-white/10">
+                        <button onClick={() => onClearHistory()} className="w-14 h-14 rounded-2xl bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-all flex items-center justify-center shadow-lg" title="Limpar Tudo">
+                          <Trash2 size={24} />
+                        </button>
+                      </div>
+                      <div className="p-4 bg-white/5 rounded-3xl border border-white/5 text-center px-10">
+                        <span className="block text-[8px] font-black uppercase tracking-widest text-white/20 mb-1">Total de Sorteios</span>
+                        <span className="text-2xl font-black text-brand-secondary">{history.length}</span>
+                      </div>
                     </div>
                   )}
                 </div>
-                
-                {history.length > 0 && (
-                  <div className="flex items-center gap-2 self-end sm:self-auto">
-                    <div className="flex items-center gap-2 p-1.5 bg-brand-bg/50 rounded-2xl border border-white/5 shadow-inner">
-                      <button 
-                        onClick={() => handleShareHistory(history[0])}
-                        className="w-10 h-10 rounded-xl bg-brand-primary/10 text-brand-primary hover:bg-brand-primary hover:text-white transition-all flex items-center justify-center"
-                        title="Compartilhar"
-                      >
-                        <Share2 size={18} />
-                      </button>
-                      <button 
-                        onClick={() => handlePrintHistory(history[0])}
-                        className="w-10 h-10 rounded-xl bg-brand-primary/10 text-brand-primary hover:bg-brand-primary hover:text-white transition-all flex items-center justify-center"
-                        title="Imprimir"
-                      >
-                        <Printer size={18} />
-                      </button>
-                      <button 
-                        onClick={() => handleDownloadPDF(history[0])}
-                        className="w-10 h-10 rounded-xl bg-brand-secondary/10 text-brand-secondary hover:bg-brand-secondary hover:text-white transition-all flex items-center justify-center"
-                        title="Baixar PDF"
-                      >
-                        <FileDown size={18} />
-                      </button>
-                      <button 
-                        onClick={() => handleDownloadXlsxHistory(history[0])}
-                        className="w-10 h-10 rounded-xl bg-green-500/10 text-green-500 hover:bg-green-500 hover:text-white transition-all flex items-center justify-center"
-                        title="Baixar XLSX"
-                      >
-                        <Download size={18} />
-                      </button>
+              </div>
+
+              <div className="lg:col-span-12">
+                <div className={history.length > 0 ? "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6" : "space-y-4"}>
+                  {history.length === 0 ? (
+                    <div className="glass p-20 rounded-[56px] text-center space-y-6 border border-dashed border-white/10">
+                      <div className="w-24 h-24 bg-white/5 rounded-full flex items-center justify-center mx-auto text-white/5">
+                        <History size={48} />
+                      </div>
+                      <div className="space-y-2">
+                        <p className="text-white/40 text-sm font-black uppercase tracking-[0.3em]">O baú de memórias está vazio</p>
+                        <p className="text-white/10 text-[10px] font-bold uppercase tracking-widest">Realize um sorteio para começar o registro</p>
+                      </div>
                     </div>
-                    
-                    <div className="w-px h-8 bg-white/10 mx-1 hidden sm:block" />
-                    
+                  ) : (
+                    history.slice((currentHistoryPage - 1) * ITEMS_PER_PAGE, currentHistoryPage * ITEMS_PER_PAGE).map((item) => (
+                      <motion.div 
+                        key={item.id} 
+                        layout
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className={`group relative flex flex-col bg-white/[0.03] backdrop-blur-2xl p-6 rounded-[40px] border border-white/5 hover:border-brand-secondary/40 hover:bg-white/[0.05] transition-all duration-500 ${expandedHistory === item.id ? 'col-span-full md:col-span-1 lg:col-span-1 xl:col-span-full ring-2 ring-brand-secondary/30' : ''}`}
+                      >
+                        <div className="flex items-center justify-between mb-8">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-white/5 rounded-2xl flex items-center justify-center text-white/20">
+                              <Calendar size={18} />
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="text-xs font-black text-white uppercase tracking-tight">{new Date(item.timestamp).toLocaleDateString('pt-BR')}</span>
+                              <span className="text-[9px] font-black uppercase tracking-widest text-brand-secondary">{new Date(item.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1.5 p-1.5 bg-white/5 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button onClick={() => handleShareHistory(item)} className="p-2.5 rounded-xl bg-white/5 text-white/40 hover:bg-brand-primary hover:text-white transition-all"><Share2 size={16} /></button>
+                            <button onClick={() => handleDownloadPDF(item)} className="p-2.5 rounded-xl bg-white/5 text-white/40 hover:bg-brand-secondary hover:text-white transition-all"><FileDown size={16} /></button>
+                            <button onClick={() => onDeleteHistoryItem(item.id)} className="p-2.5 rounded-xl bg-white/5 text-white/40 hover:bg-red-500 hover:text-white transition-all"><Trash2 size={16} /></button>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-6 mb-8 bg-brand-bg/40 p-4 rounded-3xl border border-white/5">
+                          <div className="w-20 h-20 bg-brand-secondary/10 rounded-2xl overflow-hidden shrink-0 border-2 border-brand-secondary/20 group-hover:rotate-3 transition-transform">
+                            {item.fullList?.[0]?.photoUrl ? (
+                              <img src={item.fullList[0].photoUrl} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center text-brand-secondary text-2xl font-black">
+                                {item.winnerName.charAt(0)}
+                              </div>
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <span className="text-[9px] font-black uppercase tracking-[0.4em] text-white/20 block mb-2">Vencedor Geral</span>
+                            <h4 className="text-xl font-black uppercase tracking-tight text-brand-secondary">
+                              {item.winnerName}
+                            </h4>
+                          </div>
+                        </div>
+
+                        <button 
+                          onClick={() => setExpandedHistory(expandedHistory === item.id ? null : item.id)}
+                          className={`w-full py-4 rounded-2xl text-[10px] font-black uppercase tracking-[0.3em] flex items-center justify-center gap-3 transition-all ${
+                            expandedHistory === item.id ? 'bg-brand-secondary text-brand-bg' : 'bg-white/5 text-white/40 hover:text-white hover:bg-white/10'
+                          }`}
+                        >
+                          {expandedHistory === item.id ? 'Recolher Detalhes' : 'Visualizar Nova Fila'}
+                          <ChevronDown size={14} className={`transition-transform duration-500 ${expandedHistory === item.id ? 'rotate-180' : ''}`} />
+                        </button>
+
+                        <AnimatePresence>
+                          {expandedHistory === item.id && (
+                            <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden mt-6">
+                              <div className="space-y-4 pt-4 border-t border-white/10">
+                                <span className="text-[10px] font-black uppercase tracking-[0.4em] text-white/20 ml-2 mb-2 block">Ordem Completa</span>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                  {item.fullList?.map((emp, idx) => (
+                                    <div key={idx} className="flex items-center gap-4 p-4 bg-white/5 rounded-3xl border border-white/5 hover:bg-white/10 transition-all">
+                                      <span className="w-10 h-10 rounded-2xl bg-white/5 flex items-center justify-center text-[11px] font-black text-brand-secondary shrink-0 border border-white/5">{idx + 1}º</span>
+                                      <div className="w-10 h-10 rounded-xl overflow-hidden border border-white/10 shrink-0">
+                                        {emp.photoUrl ? (
+                                          <img src={emp.photoUrl} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                        ) : (
+                                          <div className="w-full h-full flex items-center justify-center text-[10px] font-black text-white/20 bg-white/5">{emp.name.charAt(0)}</div>
+                                        )}
+                                      </div>
+                                      <span className="text-xs font-black text-white/80 uppercase">{emp.name}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </motion.div>
+                    ))
+                  )}
+                </div>
+
+                {history.length > ITEMS_PER_PAGE && (
+                  <div className="flex justify-center items-center gap-4 mt-12 py-8 bg-white/5 rounded-[48px] border border-white/5">
                     <button 
-                      onClick={() => onClearHistory()}
-                      className="w-10 h-10 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-all flex items-center justify-center"
-                      title="Limpar Histórico"
+                      disabled={currentHistoryPage === 1}
+                      onClick={(e) => { e.stopPropagation(); setCurrentHistoryPage(p => Math.max(1, p - 1)); }}
+                      className="w-14 h-14 rounded-2xl bg-white/5 flex items-center justify-center text-white/40 disabled:opacity-20 hover:bg-brand-primary hover:text-white transition-all shadow-xl"
                     >
-                      <Trash2 size={18} />
+                      <ChevronLeft size={24} />
+                    </button>
+                    <div className="flex items-center gap-3 px-10">
+                      <span className="text-sm font-black text-white uppercase tracking-widest">Página {currentHistoryPage}</span>
+                      <span className="text-white/20 text-xs font-black">/</span>
+                      <span className="text-xs font-black text-white/30">{Math.ceil(history.length / ITEMS_PER_PAGE)}</span>
+                    </div>
+                    <button 
+                      disabled={currentHistoryPage === Math.ceil(history.length / ITEMS_PER_PAGE)}
+                      onClick={(e) => { e.stopPropagation(); setCurrentHistoryPage(p => Math.min(Math.ceil(history.length / ITEMS_PER_PAGE), p + 1)); }}
+                      className="w-14 h-14 rounded-2xl bg-white/5 flex items-center justify-center text-white/40 disabled:opacity-20 hover:bg-brand-primary hover:text-white transition-all shadow-xl"
+                    >
+                      <ChevronRight size={24} />
                     </button>
                   </div>
                 )}
               </div>
-
-            <div className={history.length > 0 ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" : "space-y-4"}>
-              {isLoadingHistory ? (
-                <SkeletonHistory />
-              ) : history.length === 0 ? (
-                <div className="col-span-full glass p-12 rounded-[40px] text-center space-y-4">
-                  <div className="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center mx-auto text-white/20">
-                    <Clock size={32} />
-                  </div>
-                  <p className="text-white/40 text-xs font-bold uppercase tracking-widest">Nenhum sorteio registrado ainda.</p>
-                </div>
-              ) : (
-                history.slice((currentHistoryPage - 1) * ITEMS_PER_PAGE, currentHistoryPage * ITEMS_PER_PAGE).map((item) => (
-                  <div key={item.id} className={`flex flex-col gap-2 ${expandedHistory === item.id ? 'col-span-full' : ''}`}>
-                    <motion.div 
-                      initial={{ opacity: 0, scale: 0.95 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      onClick={() => setExpandedHistory(expandedHistory === item.id ? null : item.id)}
-                      className={`glass p-5 rounded-[32px] flex flex-col gap-4 group cursor-pointer hover:bg-white/5 transition-all border border-white/5 ${expandedHistory === item.id ? 'bg-white/5 ring-1 ring-brand-secondary/20' : ''}`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <Clock size={12} className="text-brand-secondary" />
-                          <span className="text-[9px] font-black uppercase tracking-widest text-white/40">
-                            {new Date(item.timestamp).toLocaleDateString('pt-BR')}
-                          </span>
-                        </div>
-                        <span className="text-[9px] font-black uppercase tracking-widest text-brand-secondary">
-                          {new Date(item.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                        </span>
-                      </div>
-
-                      <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 bg-white/5 rounded-2xl overflow-hidden shrink-0 border border-white/10 p-0.5">
-                          {item.fullList?.[0]?.photoUrl ? (
-                            <img src={item.fullList[0].photoUrl} alt="" className="w-full h-full object-cover rounded-xl" referrerPolicy="no-referrer" />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center text-brand-primary bg-brand-primary/10 rounded-xl">
-                              <Trophy size={20} />
-                            </div>
-                          )}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <span className="text-[8px] font-black uppercase tracking-[0.2em] text-white/30 block mb-1">Vencedor</span>
-                          <h4 className="text-white font-bold uppercase tracking-tight text-sm truncate group-hover:text-brand-secondary transition-colors">
-                            {item.winnerName}
-                          </h4>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center justify-between pt-2 border-t border-white/5">
-                        <div className="flex items-center gap-1.5">
-                          <button 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleShareHistory(item);
-                            }}
-                            className="p-2 rounded-xl bg-white/5 text-white/30 hover:bg-brand-primary hover:text-white transition-all"
-                            title="Compartilhar"
-                          >
-                            <Share2 size={14} />
-                          </button>
-                          <button 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handlePrintHistory(item);
-                            }}
-                            className="p-2 rounded-xl bg-white/5 text-white/30 hover:bg-brand-primary hover:text-white transition-all"
-                            title="Imprimir"
-                          >
-                            <Printer size={14} />
-                          </button>
-                          <button 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDownloadPDF(item);
-                            }}
-                            className="p-2 rounded-xl bg-white/5 text-white/30 hover:bg-brand-secondary hover:text-white transition-all"
-                            title="PDF"
-                          >
-                            <FileDown size={14} />
-                          </button>
-                          <button 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDownloadXlsxHistory(item);
-                            }}
-                            className="p-2 rounded-xl bg-white/5 text-white/30 hover:bg-green-500 hover:text-white transition-all"
-                            title="XLSX"
-                          >
-                            <Download size={14} />
-                          </button>
-                          <button 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onDeleteHistoryItem(item.id);
-                            }}
-                            className="p-2 rounded-xl bg-white/5 text-white/30 hover:bg-red-500/10 hover:text-red-500 transition-all"
-                            title="Excluir"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-
-                        <div className={`px-3 py-1.5 rounded-full text-[8px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${
-                          expandedHistory === item.id ? 'bg-brand-secondary text-brand-bg' : 'bg-white/5 text-white/40'
-                        }`}>
-                          {expandedHistory === item.id ? 'Fechar' : 'Ver Lista'}
-                          <ChevronDown size={10} className={`transition-transform duration-300 ${expandedHistory === item.id ? 'rotate-180' : ''}`} />
-                        </div>
-                      </div>
-                    </motion.div>
-                    
-                    <AnimatePresence>
-                      {expandedHistory === item.id && (
-                        <motion.div
-                          initial={{ height: 0, opacity: 0 }}
-                          animate={{ height: 'auto', opacity: 1 }}
-                          exit={{ height: 0, opacity: 0 }}
-                          className="overflow-hidden"
-                        >
-                          <div className="glass p-6 rounded-[32px] border border-white/5 space-y-3 bg-white/5">
-                            <div className="flex items-center justify-between mb-4">
-                              <h5 className="text-[10px] font-black uppercase tracking-[0.4em] text-brand-secondary">Ordem Sorteada</h5>
-                              <span className="text-[8px] font-bold text-white/20 uppercase tracking-widest">
-                                {item.fullList?.length} Funcionários
-                              </span>
-                            </div>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2">
-                              {item.fullList?.map((emp, idx) => (
-                                <div key={emp.id} className="flex items-center justify-between py-2 border-b border-white/5 last:border-0 group/item">
-                                  <div className="flex items-center gap-3">
-                                    <span className={`text-[10px] font-black w-5 ${idx === 0 ? 'text-brand-secondary' : 'text-white/20'}`}>
-                                      {idx + 1}º
-                                    </span>
-                                    <div className="w-8 h-8 rounded-lg bg-white/5 overflow-hidden border border-white/5">
-                                      {emp.photoUrl ? (
-                                        <img src={emp.photoUrl} alt={emp.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                                      ) : (
-                                        <div className="w-full h-full flex items-center justify-center text-[10px] text-white/20 font-bold bg-white/5">
-                                          {emp.name.charAt(0)}
-                                        </div>
-                                      )}
-                                    </div>
-                                    <span className={`text-xs font-bold uppercase tracking-tight transition-colors ${idx === 0 ? 'text-brand-secondary' : 'text-white/70 group-hover/item:text-white'}`}>
-                                      {emp.name}
-                                    </span>
-                                  </div>
-                                  {idx === 0 && (
-                                    <span className="text-[8px] font-black uppercase tracking-widest text-brand-secondary bg-brand-secondary/10 px-2 py-1 rounded-full">Vencedor</span>
-                                  )}
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
-                ))
-              )}
             </div>
-
-            {history.length > ITEMS_PER_PAGE && (
-              <div className="flex items-center justify-center gap-4 pt-8">
-                <button
-                  onClick={() => setCurrentHistoryPage(prev => Math.max(1, prev - 1))}
-                  disabled={currentHistoryPage === 1}
-                  className="px-6 py-3 rounded-2xl bg-white/5 border border-white/5 text-white/50 text-xs font-black uppercase tracking-widest hover:bg-white/10 hover:text-white disabled:opacity-30 disabled:pointer-events-none transition-all flex items-center gap-2"
-                >
-                  <ChevronLeft size={16} />
-                  Anterior
-                </button>
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-black text-brand-secondary uppercase tracking-widest">Página {currentHistoryPage}</span>
-                  <span className="text-[10px] font-black text-white/20 uppercase tracking-widest">de {Math.ceil(history.length / ITEMS_PER_PAGE)}</span>
-                </div>
-                <button
-                  onClick={() => setCurrentHistoryPage(prev => Math.min(Math.ceil(history.length / ITEMS_PER_PAGE), prev + 1))}
-                  disabled={currentHistoryPage === Math.ceil(history.length / ITEMS_PER_PAGE)}
-                  className="px-6 py-3 rounded-2xl bg-white/5 border border-white/5 text-white/50 text-xs font-black uppercase tracking-widest hover:bg-white/10 hover:text-white disabled:opacity-30 disabled:pointer-events-none transition-all flex items-center gap-2"
-                >
-                  Próximo
-                  <ChevronRight size={16} />
-                </button>
-              </div>
-            )}
-          </div>
-        </AdminTabLoader>
-      )}
+          </AdminTabLoader>
+        )}
 
         {activeTab === 'admins' && currentUserRole === 'admin' && (
           <AdminTabLoader isLoading={isLoadingAdmins} skeleton={<SkeletonAdmins />}>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-              <div className="md:col-span-2 space-y-8">
-              <div className="glass p-6 md:p-8 rounded-[40px] space-y-6">
-                <h3 className="text-xl font-bold uppercase tracking-tight flex items-center gap-3">
-                  <UserPlus className="text-brand-secondary" size={20} /> 
-                  {editingAdminId ? 'Editar Administrador' : 'Criar Administrador'}
-                </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-4">Nome</label>
-                    <input 
-                      type="text"
-                      value={adminName}
-                      onChange={(e) => setAdminName(e.target.value)}
-                      placeholder="Nome completo"
-                      className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all"
-                    />
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+              <div className="lg:col-span-12">
+                <div className="glass p-10 rounded-[48px] border border-white/10 flex flex-col md:flex-row items-center justify-between gap-8 mb-4 relative overflow-hidden bg-brand-primary/[0.02]">
+                  <div className="absolute top-0 right-0 p-12 opacity-5 pointer-events-none">
+                    <Shield size={200} />
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-4">Usuário</label>
-                    <input 
-                      type="text"
-                      value={adminUsername}
-                      onChange={(e) => setAdminUsername(e.target.value.toLowerCase().replace(/\s+/g, ''))}
-                      placeholder="identificador (ex: joao)"
-                      className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all"
-                    />
+                  <div className="space-y-3 relative z-10">
+                    <div className="flex items-center gap-4">
+                      <div className="w-16 h-16 bg-brand-primary/10 rounded-3xl flex items-center justify-center text-brand-primary">
+                        <Shield size={32} />
+                      </div>
+                      <div className="space-y-1">
+                        <h3 className="text-3xl font-black uppercase tracking-tight text-white leading-none">Gestão de Acesso</h3>
+                        <p className="text-white/40 text-[11px] font-black uppercase tracking-[0.2em]">Controle de Administradores e Permissões</p>
+                      </div>
+                    </div>
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-4">Email</label>
-                    <input 
-                      type="email"
-                      value={adminEmail}
-                      onChange={(e) => setAdminEmail(e.target.value)}
-                      readOnly={!!editingAdminId}
-                      placeholder="email@exemplo.com"
-                      className={`w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all ${editingAdminId ? 'opacity-50 cursor-not-allowed' : ''}`}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-4">Senha</label>
-                    <input 
-                      type="password"
-                      value={adminPassword}
-                      onChange={(e) => setAdminPassword(e.target.value)}
-                      placeholder={editingAdminId ? "Nova senha (opcional)" : "Mínimo 6 caracteres"}
-                      className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-4">Confirmar Senha</label>
-                    <input 
-                      type="password"
-                      value={adminConfirmPassword}
-                      onChange={(e) => setAdminConfirmPassword(e.target.value)}
-                      placeholder="Repita a senha"
-                      className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-4">Nível de Acesso</label>
-                    <select 
-                      value={adminRole}
-                      onChange={(e) => setAdminRole(e.target.value as 'admin' | 'coordinator')}
-                      className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all appearance-none"
-                    >
-                      <option value="admin" className="bg-brand-bg">Administrador (Full)</option>
-                      <option value="coordinator" className="bg-brand-bg">Coordenador (Limitado)</option>
-                    </select>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-4">Foto do Administrador</label>
-                    {isCameraOpen && activeCameraType === 'admins' ? (
-                      <div className="relative rounded-2xl overflow-hidden bg-black aspect-video">
-                        <video 
-                          ref={videoRef} 
-                          autoPlay 
-                          playsInline 
-                          className="w-full h-full object-cover mirror"
-                        />
-                        <canvas ref={canvasRef} className="hidden" />
+                </div>
+              </div>
+
+              <div className="lg:col-span-5 space-y-4">
+                <div className="flex items-center gap-4 px-4">
+                  <div className="w-1.5 h-6 bg-brand-secondary rounded-full shadow-[0_0_12px_rgba(245,158,11,0.8)]" />
+                  <h3 className="text-[12px] font-black uppercase tracking-[0.4em] text-white">
+                    {editingAdminId ? 'Editar Perfil' : 'Novo Administrador'}
+                  </h3>
+                </div>
+                
+                <div className="glass p-8 rounded-[48px] border border-white/10 space-y-6">
+                  <div className="flex justify-center mb-8">
+                     {isCameraOpen && activeCameraType === 'admins' ? (
+                      <div className="relative w-48 h-48 rounded-[40px] overflow-hidden bg-black ring-4 ring-brand-primary/20">
+                        <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover mirror" />
                         <div className="absolute bottom-4 inset-x-0 flex justify-center items-center gap-3">
-                          <button
-                            onClick={stopCamera}
-                            className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-white hover:bg-red-500 transition-all"
-                          >
-                            <X size={18} />
-                          </button>
-                          <button
-                            onClick={capturePhoto}
-                            className="w-12 h-12 rounded-full bg-brand-primary flex items-center justify-center text-white shadow-xl shadow-brand-primary/40 hover:scale-105 active:scale-95 transition-all"
-                          >
-                            <Camera size={24} />
-                          </button>
+                          <button onClick={stopCamera} className="w-10 h-10 rounded-full bg-black/40 backdrop-blur-md border border-white/20 flex items-center justify-center text-white hover:bg-red-500 transition-all"><X size={18} /></button>
+                          <button onClick={capturePhoto} className="w-12 h-12 rounded-full bg-brand-primary flex items-center justify-center text-white shadow-xl hover:scale-105 active:scale-95 transition-all"><Camera size={24} /></button>
                         </div>
                       </div>
                     ) : (
-                      <div className="flex items-center gap-4">
-                        <div className="w-16 h-16 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center overflow-hidden relative group">
+                      <div className="relative group">
+                        <div className="w-48 h-48 rounded-[40px] bg-white/5 border-2 border-white/10 border-dashed flex items-center justify-center overflow-hidden transition-all group-hover:border-brand-primary/50">
                           {adminPhotoUrl ? (
-                            <>
-                              <img src={adminPhotoUrl} alt="Preview" className="w-full h-full object-cover" />
-                              <button 
-                                onClick={() => setAdminPhotoUrl('')}
-                                className="absolute inset-0 bg-red-500/80 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white"
-                              >
-                                <X size={20} />
-                              </button>
-                            </>
+                            <img src={adminPhotoUrl} alt="Preview" className="w-full h-full object-cover" />
                           ) : (
-                            <Camera size={24} className="text-white/20" />
+                            <UserIcon size={64} className="text-white/10" />
                           )}
-                          {isAdminUploading && (
-                            <div className="absolute inset-0 bg-brand-bg/60 flex items-center justify-center">
-                              <div className="w-5 h-5 border-2 border-brand-primary/30 border-t-brand-primary rounded-full animate-spin" />
-                            </div>
-                          )}
+                          {isAdminUploading && <div className="absolute inset-0 bg-brand-bg/60 flex items-center justify-center"><div className="w-8 h-8 border-4 border-brand-primary/30 border-t-brand-primary rounded-full animate-spin" /></div>}
                         </div>
-                        <div className="flex-1 flex gap-2">
-                          <label className="flex-1">
-                            <div className="w-full bg-white/5 border border-white/10 border-dashed rounded-2xl py-4 px-6 text-white/40 text-[10px] font-black uppercase tracking-widest text-center cursor-pointer hover:bg-white/10 hover:border-brand-primary/30 transition-all flex items-center justify-center gap-2">
-                              <Upload size={14} />
-                              {adminPhotoUrl ? 'Trocar' : 'Enviar'}
-                            </div>
-                            <input 
-                              type="file"
-                              accept="image/*"
-                              onChange={handleAdminFileUpload}
-                              className="hidden"
-                            />
+                        <div className="absolute -bottom-2 -right-2 flex gap-2">
+                          <button onClick={() => startCamera('admins')} className="w-12 h-12 bg-brand-primary text-white rounded-2xl flex items-center justify-center shadow-xl hover:scale-110 active:scale-95 transition-all"><Camera size={20} /></button>
+                          <label className="w-12 h-12 bg-white/10 text-white rounded-2xl flex items-center justify-center shadow-xl hover:bg-white/20 cursor-pointer transition-all border border-white/5">
+                            <Upload size={20} />
+                            <input type="file" accept="image/*" onChange={handleAdminFileUpload} className="hidden" />
                           </label>
-                          <button
-                            onClick={() => startCamera('admins')}
-                            className="px-6 bg-white/5 border border-white/10 rounded-2xl flex items-center justify-center text-white/40 hover:text-brand-primary hover:border-brand-primary/50 transition-all"
-                            title="Tirar Foto"
-                          >
-                            <Camera size={18} />
-                          </button>
                         </div>
                       </div>
                     )}
                   </div>
-                </div>
-                <div className="flex gap-3">
-                  <button 
-                    disabled={isAdminUploading}
-                    onClick={() => {
-                      const trimmedName = adminName.trim();
-                      const trimmedEmail = adminEmail.trim().toLowerCase();
-                      const trimmedUsername = adminUsername.trim();
-                      
-                      if (!trimmedName) {
-                        addNotification('Nome é obrigatório.', 'error');
-                        return;
-                      }
-                      
-                      if (trimmedName.length < 3) {
-                        addNotification('O nome deve ter pelo menos 3 caracteres.', 'error');
-                        return;
-                      }
 
-                      if (!trimmedEmail) {
-                        addNotification('Email é obrigatório.', 'error');
-                        return;
-                      }
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-4">Nome Completo</label>
+                      <input type="text" value={adminName} onChange={(e) => setAdminName(e.target.value)} placeholder="Ex: João Silva" className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all font-bold" />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-4">Usuário de Acesso</label>
+                      <input type="text" value={adminUsername} onChange={(e) => setAdminUsername(e.target.value.toLowerCase().replace(/\s+/g, ''))} placeholder="identificador" className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all font-bold" />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-4">E-mail</label>
+                      <input type="email" value={adminEmail} onChange={(e) => setAdminEmail(e.target.value)} readOnly={!!editingAdminId} placeholder="email@exemplo.com" className={`w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all font-bold ${editingAdminId ? 'opacity-50 cursor-not-allowed' : ''}`} />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-4">Senha</label>
+                        <input type="password" value={adminPassword} onChange={(e) => setAdminPassword(e.target.value)} placeholder="Senha" className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all" />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-4">Confirmar</label>
+                        <input type="password" value={adminConfirmPassword} onChange={(e) => setAdminConfirmPassword(e.target.value)} placeholder="Confirme" className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all" />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-4">Cargo / Função</label>
+                      <select value={adminRole} onChange={(e) => setAdminRole(e.target.value as 'admin' | 'coordinator')} className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all appearance-none font-bold">
+                        <option value="admin" className="bg-brand-bg text-white">Administrador Gestor</option>
+                        <option value="coordinator" className="bg-brand-bg text-white">Coordenador da Fila</option>
+                      </select>
+                    </div>
 
-                      // Basic email validation
-                      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-                      if (!emailRegex.test(trimmedEmail)) {
-                        addNotification('Email inválido.', 'error');
-                        return;
-                      }
-
-                      if (!editingAdminId && !adminPassword) {
-                        addNotification('Senha é obrigatória para novos administradores.', 'error');
-                        return;
-                      }
-
-                      if (adminPassword && adminPassword.length < 6) {
-                        addNotification('A senha deve ter pelo menos 6 caracteres.', 'error');
-                        return;
-                      }
-
-                      if (adminPassword !== adminConfirmPassword) {
-                        addNotification('As senhas não coincidem.', 'error');
-                        return;
-                      }
-
-                      if (editingAdminId) {
-                        setIsSavingAdmin(true);
-                        onUpdateAdmin(editingAdminId, { 
-                          name: trimmedName, 
-                          username: trimmedUsername || undefined,
-                          email: trimmedEmail, 
-                          role: adminRole,
-                          password: adminPassword || undefined,
-                          photoUrl: adminPhotoUrl || undefined
-                        }).finally(() => {
-                          setIsSavingAdmin(false);
-                          setEditingAdminId(null);
-                          setAdminName('');
-                          setAdminUsername('');
-                          setAdminEmail('');
-                          setAdminPassword('');
-                          setAdminConfirmPassword('');
-                          setAdminPhotoUrl('');
-                          setAdminRole('coordinator');
-                        });
-                      } else {
-                        setShowAddAdminConfirm(true);
-                      }
-                    }}
-                    className={`flex-1 bg-brand-primary text-white font-black uppercase tracking-widest py-4 rounded-2xl shadow-lg transition-all active:scale-95 ${(isAdminUploading || isSavingAdmin) ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  >
-                    {(isAdminUploading || isSavingAdmin) ? 'Processando...' : (editingAdminId ? 'Salvar Alterações' : 'Criar Administrador')}
-                  </button>
-                  {editingAdminId && (
-                        <button 
-                          onClick={() => {
-                            setEditingAdminId(null);
-                            setAdminName('');
-                            setAdminUsername('');
-                            setAdminEmail('');
-                            setAdminPassword('');
-                            setAdminConfirmPassword('');
-                            setAdminPhotoUrl('');
-                            setAdminRole('coordinator');
-                          }}
-                          className="px-8 glass text-white font-black uppercase tracking-widest py-4 rounded-2xl transition-all active:scale-95"
-                        >
-                          Cancelar
-                        </button>
-                  )}
-                </div>
-
-                <AnimatePresence>
-                  {showAddAdminConfirm && (
-                    <motion.div 
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      className="fixed inset-0 z-[500] flex items-center justify-center p-4 bg-brand-bg/90 backdrop-blur-sm"
-                    >
-                      <motion.div 
-                        initial={{ scale: 0.9, opacity: 0 }}
-                        animate={{ scale: 1, opacity: 1 }}
-                        exit={{ scale: 0.9, opacity: 0 }}
-                        className="glass max-w-md w-full p-8 rounded-[40px] space-y-6"
+                    <div className="flex gap-3 pt-4">
+                      <button 
+                        disabled={isAdminUploading || isSavingAdmin}
+                        onClick={() => {
+                           const trimmedName = adminName.trim();
+                           const trimmedEmail = adminEmail.trim().toLowerCase();
+                           const trimmedUsername = adminUsername.trim();
+                           if (!trimmedName || !trimmedEmail || (!editingAdminId && !adminPassword)) {
+                             addNotification('Preencha os campos obrigatórios.', 'error');
+                             return;
+                           }
+                           if (adminPassword !== adminConfirmPassword) {
+                             addNotification('Senhas não coincidem.', 'error');
+                             return;
+                           }
+                           if (editingAdminId) {
+                             setIsSavingAdmin(true);
+                             onUpdateAdmin(editingAdminId, { 
+                               name: trimmedName, 
+                               username: trimmedUsername, 
+                               role: adminRole, 
+                               photoUrl: adminPhotoUrl || undefined,
+                               password: adminPassword || undefined
+                             }).finally(() => {
+                               setIsSavingAdmin(false);
+                               setEditingAdminId(null);
+                             });
+                           } else {
+                             setShowAddAdminConfirm(true);
+                           }
+                        }}
+                        className="flex-1 h-16 bg-brand-primary hover:bg-brand-primary/90 text-white rounded-[24px] flex items-center justify-center gap-3 text-xs font-black uppercase tracking-[0.2em] transition-all shadow-xl shadow-brand-primary/20 disabled:opacity-50"
                       >
-                        <div className="w-16 h-16 bg-brand-primary/20 rounded-2xl flex items-center justify-center text-brand-primary mx-auto">
-                          <UserPlus size={32} />
-                        </div>
-                        <div className="text-center space-y-2">
-                          <h4 className="text-xl font-bold uppercase tracking-tight text-white">Confirmar Cadastro</h4>
-                          <p className="text-white/40 text-xs leading-relaxed">
-                            Você está prestes a criar um novo acesso com nível 
-                            <span className="text-brand-secondary font-black mx-1">
-                              {adminRole === 'admin' ? 'ADMINISTRADOR' : 'COORDENADOR'}
-                            </span>
-                            para o email <span className="text-white font-bold">{adminEmail}</span> 
-                            {adminUsername && <> (@<span className="text-brand-secondary font-bold">{adminUsername}</span>)</>}.
-                          </p>
-                        </div>
-                        
-                        <div className="bg-white/5 rounded-2xl p-4 space-y-3">
-                          <div className="flex justify-between items-center text-[10px]">
-                            <span className="text-white/40 font-black uppercase tracking-widest">Nome</span>
-                            <span className="text-white font-bold uppercase tracking-tight">{adminName}</span>
-                          </div>
-                          <div className="flex justify-between items-center text-[10px]">
-                            <span className="text-white/40 font-black uppercase tracking-widest">Nível</span>
-                            <span className="text-brand-secondary font-black uppercase tracking-widest">{adminRole}</span>
-                          </div>
-                        </div>
-
-                        <div className="flex gap-3">
-                          <button 
-                            disabled={isSavingAdmin}
-                            onClick={() => setShowAddAdminConfirm(false)}
-                            className="flex-1 py-4 glass text-white/40 font-black uppercase tracking-widest rounded-2xl hover:text-white transition-all disabled:opacity-50"
-                          >
-                            Cancelar
-                          </button>
-                          <button 
-                            disabled={isSavingAdmin}
-                            onClick={async () => {
-                              setIsSavingAdmin(true);
-                              try {
-                                await onAddAdmin(adminName.trim(), adminEmail.trim().toLowerCase(), adminRole, adminPassword, adminPhotoUrl, adminUsername.trim());
-                                setAdminName('');
-                                setAdminUsername('');
-                                setAdminEmail('');
-                                setAdminPassword('');
-                                setAdminConfirmPassword('');
-                                setAdminPhotoUrl('');
-                                setAdminRole('coordinator');
-                              } catch (err) {
-                                // Error already handled in onAddAdmin, but we want to know if it finished
-                              } finally {
-                                setIsSavingAdmin(false);
-                                setShowAddAdminConfirm(false);
-                              }
-                            }}
-                            className="flex-1 py-4 bg-brand-primary text-white font-black uppercase tracking-widest rounded-2xl shadow-lg shadow-brand-primary/20 hover:scale-105 transition-all disabled:opacity-50"
-                          >
-                            {isSavingAdmin ? 'Criando...' : 'Confirmar'}
-                          </button>
-                        </div>
-                      </motion.div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-
-              <div className="space-y-4">
-                <h3 className="text-xl font-bold uppercase tracking-tight flex items-center gap-3">
-                  <Users className="text-brand-secondary" size={20} /> Lista de Administradores
-                </h3>
-                {isLoadingAdmins ? (
-                  <div className="glass p-12 rounded-[40px] text-center">
-                    <div className="w-8 h-8 border-4 border-brand-primary/30 border-t-brand-primary rounded-full animate-spin mx-auto" />
-                  </div>
-                ) : admins.length === 0 ? (
-                  <div className="glass p-12 rounded-[40px] text-center text-white/40 uppercase tracking-widest text-[10px] font-black">
-                    Nenhum administrador cadastrado.
-                  </div>
-                ) : (
-                  <div className="glass overflow-hidden rounded-[32px]">
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left border-collapse">
-                        <thead>
-                          <tr className="border-b border-white/5 bg-white/5">
-                            <th className="p-6 text-[10px] font-black uppercase tracking-widest text-white/40">Usuário</th>
-                            <th className="p-6 text-[10px] font-black uppercase tracking-widest text-white/40">Nível</th>
-                            <th className="p-6 text-[10px] font-black uppercase tracking-widest text-white/40">Status</th>
-                            <th className="p-6 text-[10px] font-black uppercase tracking-widest text-white/40 text-right">Ações</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-white/5">
-                          {admins.map((admin) => (
-                            <tr key={admin.id} className={`hover:bg-white/[0.02] transition-colors ${!admin.isActive ? 'opacity-50' : ''}`}>
-                              <td className="p-6">
-                                <div className="flex items-center gap-4">
-                                  <div className="w-12 h-12 rounded-xl bg-white/5 flex items-center justify-center overflow-hidden shrink-0">
-                                    {admin.photoUrl ? (
-                                      <img src={admin.photoUrl} alt={admin.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                                    ) : (
-                                      <span className="text-lg font-bold text-white/20">{admin.name.charAt(0)}</span>
-                                    )}
-                                  </div>
-                                  <div>
-                                    <h4 className="text-white text-sm font-bold uppercase tracking-tight">{admin.name}</h4>
-                                    <div className="flex items-center gap-2 mt-0.5">
-                                      {admin.username && <span className="text-brand-secondary text-[8px] font-black uppercase tracking-widest">@{admin.username}</span>}
-                                      {admin.username && <span className="text-white/20 text-[8px] font-black">•</span>}
-                                      <p className="text-white/40 text-[8px] font-bold tracking-widest">{admin.email}</p>
-                                    </div>
-                                  </div>
-                                </div>
-                              </td>
-                              <td className="p-6">
-                                <span className="text-[10px] font-black uppercase tracking-widest text-white/60">
-                                  {admin.role === 'admin' ? 'Administrador' : 'Coordenador'}
-                                </span>
-                              </td>
-                              <td className="p-6">
-                                <span className={`text-[8px] font-black uppercase tracking-widest px-3 py-1 rounded-full ${admin.isActive ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
-                                  {admin.isActive ? 'Ativo' : 'Inativo'}
-                                </span>
-                              </td>
-                              <td className="p-6 text-right">
-                                <div className="flex items-center justify-end gap-2">
-                                  <button 
-                                    onClick={() => onUpdateAdmin(admin.id, { isActive: !admin.isActive })}
-                                    className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all ${admin.isActive ? 'bg-green-500/10 text-green-400 hover:bg-green-500 hover:text-white' : 'bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white'}`}
-                                    title={admin.isActive ? 'Desativar' : 'Ativar'}
-                                  >
-                                    {admin.isActive ? <Check size={14} /> : <X size={14} />}
-                                  </button>
-                                  <button 
-                                    onClick={() => {
-                                      setEditingAdminId(admin.id);
-                                      setAdminName(admin.name);
-                                      setAdminUsername(admin.username || '');
-                                      setAdminEmail(admin.email);
-                                      setAdminRole(admin.role || 'coordinator');
-                                      setAdminPassword(admin.password || '');
-                                      setAdminPhotoUrl(admin.photoUrl || '');
-                                      setActiveTab('admins');
-                                      window.scrollTo({ top: 0, behavior: 'smooth' });
-                                    }}
-                                    className="w-9 h-9 rounded-xl bg-blue-500/10 text-blue-400 hover:bg-blue-500 hover:text-white transition-all flex items-center justify-center"
-                                  >
-                                    <Edit2 size={14} />
-                                  </button>
-                                  <div className="relative inline-block">
-                                    <button 
-                                      onClick={() => {
-                                        if (deleteConfirmId === admin.id) {
-                                          onDeleteAdmin(admin.id);
-                                          setDeleteConfirmId(null);
-                                        } else {
-                                          setDeleteConfirmId(admin.id);
-                                          setTimeout(() => setDeleteConfirmId(null), 3000);
-                                        }
-                                      }}
-                                      className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all ${deleteConfirmId === admin.id ? 'bg-red-500 text-white' : 'bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white'}`}
-                                    >
-                                      {deleteConfirmId === admin.id ? <Check size={14} /> : <Trash2 size={14} />}
-                                    </button>
-                                    {deleteConfirmId === admin.id && (
-                                      <div className="absolute bottom-full right-0 mb-2 bg-red-500 text-white text-[8px] font-black uppercase tracking-widest py-1 px-2 rounded whitespace-nowrap animate-bounce z-10">
-                                        Confirmar?
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                        {isSavingAdmin ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : (editingAdminId ? <Check size={20} /> : <Plus size={20} />)}
+                        {editingAdminId ? 'Salvar Alterações' : 'Criar Conta'}
+                      </button>
+                      {editingAdminId && (
+                        <button onClick={() => { setEditingAdminId(null); setAdminName(''); setAdminEmail(''); setAdminUsername(''); setAdminPassword(''); setAdminConfirmPassword(''); setAdminPhotoUrl(''); setAdminRole('coordinator'); }} className="w-16 h-16 bg-white/5 border border-white/10 rounded-[24px] flex items-center justify-center text-white/40 hover:text-red-400 hover:bg-red-400/10 transition-all">
+                          <X size={24} />
+                        </button>
+                      )}
                     </div>
                   </div>
-                )}
-              </div>
-            </div>
-            
-            <div className="space-y-6">
-              <div className="glass p-8 rounded-[40px] space-y-4 text-center">
-                <div className="w-16 h-16 bg-brand-primary/10 rounded-3xl flex items-center justify-center text-brand-primary mx-auto">
-                  <Lock size={32} />
                 </div>
-                <h4 className="text-sm font-black uppercase tracking-widest text-white">Segurança</h4>
-                <p className="text-white/40 text-[10px] font-medium leading-relaxed">
-                  Administradores têm acesso total ao painel. Certifique-se de usar emails válidos.
-                </p>
+              </div>
+
+              <div className="lg:col-span-7 space-y-4">
+                <div className="flex items-center gap-4 px-4">
+                  <div className="w-1.5 h-6 bg-brand-primary rounded-full shadow-[0_0_12px_rgba(5,150,105,0.8)]" />
+                  <h3 className="text-[12px] font-black uppercase tracking-[0.4em] text-white">Equipe de Gestão</h3>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4">
+                  {admins.map((admin) => (
+                    <motion.div key={admin.id} layout initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="glass p-5 rounded-[40px] flex items-center justify-between group border border-white/5 hover:border-brand-primary/30 transition-all">
+                      <div className="flex items-center gap-5">
+                        <div className="w-16 h-16 rounded-[24px] bg-white/5 overflow-hidden border border-white/10 relative group-hover:scale-105 transition-transform duration-500">
+                          {admin.photoUrl ? (
+                            <img src={admin.photoUrl} alt={admin.name} className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-xl font-black text-white/20 uppercase bg-gradient-to-br from-white/5 to-white/10">{admin.name.charAt(0)}</div>
+                          )}
+                          {/* Online status indicator removed if not in AdminUser type */}
+                        </div>
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <h4 className="text-sm font-black text-white uppercase tracking-tight">{admin.name}</h4>
+                            <span className="text-[8px] font-black uppercase tracking-[0.2em] bg-white/10 text-white/40 px-2 py-0.5 rounded-full">@{admin.username || 'user'}</span>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className={`text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-full ${admin.role === 'admin' ? 'bg-brand-primary/10 text-brand-primary border border-brand-primary/20' : 'bg-blue-500/10 text-blue-400 border border-blue-500/20'}`}>
+                              {admin.role === 'admin' ? 'Administrador' : 'Coordenador'}
+                            </span>
+                            <span className="text-[9px] font-black uppercase tracking-widest text-white/20">{admin.email}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-all translate-x-4 group-hover:translate-x-0">
+                        <button onClick={() => { setEditingAdminId(admin.id); setAdminName(admin.name); setAdminUsername(admin.username || ''); setAdminEmail(admin.email); setAdminRole(admin.role || 'coordinator'); setAdminPhotoUrl(admin.photoUrl || ''); setAdminPassword(''); setAdminConfirmPassword(''); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="w-12 h-12 rounded-2xl bg-white/5 text-white/40 flex items-center justify-center hover:bg-brand-primary hover:text-white transition-all"><Edit2 size={18} /></button>
+                        {admin.email !== auth.currentUser?.email && (
+                          <button onClick={() => { if(window.confirm('Excluir admin?')) onDeleteAdmin(admin.id); }} className="w-12 h-12 rounded-2xl bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white flex items-center justify-center transition-all"><Trash2 size={18} /></button>
+                        )}
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
               </div>
             </div>
-          </div>
+
+            <AnimatePresence>
+              {showAddAdminConfirm && (
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[500] flex items-center justify-center p-4 bg-brand-bg/90 backdrop-blur-sm">
+                  <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="glass max-w-md w-full p-8 rounded-[40px] space-y-6">
+                    <div className="w-16 h-16 bg-brand-primary/20 rounded-2xl flex items-center justify-center text-brand-primary mx-auto">
+                      <UserPlus size={32} />
+                    </div>
+                    <div className="text-center space-y-2">
+                       <h4 className="text-xl font-bold uppercase tracking-tight text-white">Confirmar Cadastro</h4>
+                       <p className="text-white/40 text-xs leading-relaxed">Você está prestes a criar um novo acesso de <span className="text-brand-secondary font-black">{adminRole === 'admin' ? 'ADMINISTRADOR' : 'COORDENADOR'}</span> para o email <span className="text-white font-bold">{adminEmail}</span>.</p>
+                    </div>
+                    <div className="flex gap-3">
+                      <button onClick={() => setShowAddAdminConfirm(false)} className="flex-1 py-4 glass text-white/40 font-black uppercase tracking-widest rounded-2xl">Cancelar</button>
+                      <button 
+                        onClick={async () => {
+                           setIsSavingAdmin(true);
+                           try {
+                             await onAddAdmin(adminName.trim(), adminEmail.trim().toLowerCase(), adminRole, adminPassword, adminPhotoUrl, adminUsername.trim());
+                             setAdminName(''); setAdminEmail(''); setAdminUsername(''); setAdminPassword(''); setAdminConfirmPassword(''); setAdminPhotoUrl(''); setAdminRole('coordinator');
+                           } finally {
+                             setIsSavingAdmin(false);
+                             setShowAddAdminConfirm(false);
+                           }
+                        }}
+                        className="flex-1 py-4 bg-brand-primary text-white font-black uppercase tracking-widest rounded-2xl shadow-lg shadow-brand-primary/20"
+                      >
+                        {isSavingAdmin ? 'Criando...' : 'Confirmar'}
+                      </button>
+                    </div>
+                  </motion.div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </AdminTabLoader>
         )}
 
         {activeTab === 'settings' && currentUserRole === 'admin' && (
           <AdminTabLoader isLoading={isLoadingSettings} skeleton={<SkeletonSettings />}>
-            <div className="glass p-6 md:p-10 rounded-[40px] space-y-12 max-w-2xl">
-            <div className="space-y-8">
-              <h3 className="text-xl font-bold uppercase tracking-tight flex items-center gap-3">
-                <Settings className="text-brand-secondary" size={20} /> Editar Cabeçalho (Topo)
-              </h3>
-              
-              <div className="space-y-6">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-white/40 ml-4">Título Linha 1</label>
-                    <input 
-                      type="text"
-                      value={tempSettings.headerTitleLine1 || ''}
-                      onChange={(e) => setTempSettings({...tempSettings, headerTitleLine1: e.target.value})}
-                      className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all"
-                    />
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start max-w-6xl mx-auto">
+              <div className="lg:col-span-12">
+                <div className="glass p-10 rounded-[48px] border border-white/10 flex flex-col md:flex-row items-center justify-between gap-8 mb-4 relative overflow-hidden bg-brand-primary/[0.02]">
+                  <div className="absolute top-0 right-0 p-12 opacity-5 pointer-events-none text-brand-primary">
+                    <Settings size={200} />
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-white/40 ml-4">Título Linha 2</label>
-                    <input 
-                      type="text"
-                      value={tempSettings.headerTitleLine2 || ''}
-                      onChange={(e) => setTempSettings({...tempSettings, headerTitleLine2: e.target.value})}
-                      className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all"
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase tracking-[0.2em] text-white/40 ml-4">Subtítulo</label>
-                  <input 
-                    type="text"
-                    value={tempSettings.headerSubtitle || ''}
-                    onChange={(e) => setTempSettings({...tempSettings, headerSubtitle: e.target.value})}
-                    className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-8">
-              <h3 className="text-xl font-bold uppercase tracking-tight flex items-center gap-3">
-                <Settings className="text-brand-secondary" size={20} /> Editar Card Principal
-              </h3>
-              
-              <div className="space-y-6">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-4">Imagem de Fundo do Card</label>
-                  <div className="flex items-center gap-4">
-                    <div className="w-32 h-20 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center overflow-hidden relative group">
-                      {tempSettings.heroBackgroundImage ? (
-                        <>
-                          <img src={tempSettings.heroBackgroundImage} alt="Preview" className="w-full h-full object-cover" />
-                          <button 
-                            onClick={() => setTempSettings({ ...tempSettings, heroBackgroundImage: '' })}
-                            className="absolute inset-0 bg-red-500/80 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white"
-                          >
-                            <X size={20} />
-                          </button>
-                        </>
-                      ) : (
-                        <Camera size={24} className="text-white/20" />
-                      )}
-                      {isHeroUploading && (
-                        <div className="absolute inset-0 bg-brand-bg/60 flex items-center justify-center">
-                          <div className="w-5 h-5 border-2 border-brand-primary/30 border-t-brand-primary rounded-full animate-spin" />
-                        </div>
-                      )}
-                    </div>
-                    <label className="flex-1">
-                      <div className="w-full bg-white/5 border border-white/10 border-dashed rounded-2xl py-4 px-6 text-white/40 text-[10px] font-black uppercase tracking-widest text-center cursor-pointer hover:bg-white/10 hover:border-brand-primary/30 transition-all flex items-center justify-center gap-2">
-                        <Upload size={14} />
-                        {tempSettings.heroBackgroundImage ? 'Trocar Imagem' : 'Enviar Imagem'}
+                  <div className="space-y-3 relative z-10">
+                    <div className="flex items-center gap-4">
+                      <div className="w-16 h-16 bg-brand-primary/10 rounded-3xl flex items-center justify-center text-brand-primary">
+                        <Settings size={32} />
                       </div>
-                      <input 
-                        type="file"
-                        accept="image/*"
-                        onChange={handleHeroBackgroundUpload}
-                        className="hidden"
-                      />
-                    </label>
+                      <div className="space-y-1">
+                        <h3 className="text-3xl font-black uppercase tracking-tight text-white leading-none">Configurações Gerais</h3>
+                        <p className="text-white/40 text-[11px] font-black uppercase tracking-[0.2em]">Personalização Visual e Identidade do App</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="lg:col-span-8 space-y-8">
+                {/* Header Settings Card */}
+                <div className="space-y-4">
+                  <div className="flex items-center gap-4 px-4">
+                    <div className="w-1.5 h-6 bg-brand-secondary rounded-full shadow-[0_0_12px_rgba(245,158,11,0.8)]" />
+                    <h3 className="text-[12px] font-black uppercase tracking-[0.4em] text-white">Identidade Visual (Topo)</h3>
+                  </div>
+                  <div className="glass p-8 rounded-[48px] border border-white/10 space-y-8">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-4">Título Principal (L1)</label>
+                        <input type="text" value={tempSettings.headerTitleLine1 || ''} onChange={(e) => setTempSettings({...tempSettings, headerTitleLine1: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all font-bold" />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-4">Título Principal (L2)</label>
+                        <input type="text" value={tempSettings.headerTitleLine2 || ''} onChange={(e) => setTempSettings({...tempSettings, headerTitleLine2: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all font-bold" />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-4">Frase de Boas-vindas / Subtítulo</label>
+                      <input type="text" value={tempSettings.headerSubtitle || ''} onChange={(e) => setTempSettings({...tempSettings, headerSubtitle: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all font-bold" />
+                    </div>
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase tracking-[0.2em] text-white/40 ml-4">Subtítulo (Tag)</label>
-                  <input 
-                    type="text"
-                    value={tempSettings.heroSubtitle || ''}
-                    onChange={(e) => setTempSettings({...tempSettings, heroSubtitle: e.target.value})}
-                    className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all"
-                  />
+                {/* Hero Settings Card */}
+                <div className="space-y-4">
+                  <div className="flex items-center gap-4 px-4">
+                    <div className="w-1.5 h-6 bg-brand-primary rounded-full shadow-[0_0_12px_rgba(5,150,105,0.8)]" />
+                    <h3 className="text-[12px] font-black uppercase tracking-[0.4em] text-white">Card Principal (Highlight)</h3>
+                  </div>
+                  <div className="glass p-8 rounded-[48px] border border-white/10 space-y-8">
+                    <div className="space-y-3">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-4">Background Visual</label>
+                      <div className="flex flex-col md:flex-row gap-6">
+                        <div className="w-full md:w-64 h-40 rounded-[32px] bg-white/5 border border-white/10 overflow-hidden relative group shrink-0 shadow-inner">
+                          {tempSettings.heroBackgroundImage ? (
+                            <img src={tempSettings.heroBackgroundImage} alt="Preview" className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center"><ImageIcon size={40} className="text-white/10" /></div>
+                          )}
+                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                            <button onClick={() => setTempSettings({ ...tempSettings, heroBackgroundImage: '' })} className="w-10 h-10 rounded-xl bg-red-500 text-white flex items-center justify-center hover:scale-110 transition-all"><Trash2 size={18} /></button>
+                          </div>
+                        </div>
+                        <div className="flex-1 space-y-4">
+                          <p className="text-[11px] text-white/40 leading-relaxed font-medium">Recomendamos imagens panorâmicas de alta qualidade (1920x1080) para o melhor efeito visual no card principal.</p>
+                          <label className="w-full flex items-center justify-center h-16 bg-white/5 border-2 border-white/10 border-dashed rounded-3xl hover:bg-white/10 hover:border-brand-primary/50 cursor-pointer transition-all group">
+                             <div className="flex items-center gap-3 text-white/40 text-[10px] font-black uppercase tracking-widest group-hover:text-brand-primary">
+                               <Upload size={18} />
+                               {isHeroUploading ? 'Enviando...' : 'Carregar Nova Imagem'}
+                             </div>
+                             <input type="file" accept="image/*" onChange={handleHeroBackgroundUpload} className="hidden" />
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-6 pt-4 border-t border-white/5">
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-4">Tag Superior (Emblema)</label>
+                        <input type="text" value={tempSettings.heroSubtitle || ''} onChange={(e) => setTempSettings({...tempSettings, heroSubtitle: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-brand-secondary focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all font-black uppercase tracking-widest text-sm" />
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-4">Chamada Principal (L1)</label>
+                          <input type="text" value={tempSettings.heroTitleLine1 || ''} onChange={(e) => setTempSettings({...tempSettings, heroTitleLine1: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all font-bold" />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-4">Chamada Principal (L2)</label>
+                          <input type="text" value={tempSettings.heroTitleLine2 || ''} onChange={(e) => setTempSettings({...tempSettings, heroTitleLine2: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all font-bold" />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-4">Descrição do Card</label>
+                        <textarea rows={3} value={tempSettings.heroDescription || ''} onChange={(e) => setTempSettings({...tempSettings, heroDescription: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white/60 focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all resize-none font-medium" />
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-white/40 ml-4">Título Linha 1</label>
-                    <input 
-                      type="text"
-                      value={tempSettings.heroTitleLine1 || ''}
-                      onChange={(e) => setTempSettings({...tempSettings, heroTitleLine1: e.target.value})}
-                      className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all"
-                    />
+                {/* Queue Settings Card */}
+                <div className="space-y-4">
+                  <div className="flex items-center gap-4 px-4">
+                    <div className="w-1.5 h-6 bg-blue-500 rounded-full shadow-[0_0_12px_rgba(59,130,246,0.8)]" />
+                    <h3 className="text-[12px] font-black uppercase tracking-[0.4em] text-white">Painel da Fila</h3>
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-white/40 ml-4">Título Linha 2</label>
-                    <input 
-                      type="text"
-                      value={tempSettings.heroTitleLine2 || ''}
-                      onChange={(e) => setTempSettings({...tempSettings, heroTitleLine2: e.target.value})}
-                      className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all"
-                    />
+                  <div className="glass p-8 rounded-[48px] border border-white/10 space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-4">Título da Seção (L1)</label>
+                        <input type="text" value={tempSettings.queueTitleLine1 || ''} onChange={(e) => setTempSettings({...tempSettings, queueTitleLine1: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all font-bold" />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-4">Título da Seção (L2 - Destaque)</label>
+                        <input type="text" value={tempSettings.queueTitleLine2 || ''} onChange={(e) => setTempSettings({...tempSettings, queueTitleLine2: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all font-black uppercase" />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-4">Subtítulo Informativo</label>
+                      <input type="text" value={tempSettings.queueSubtitle || ''} onChange={(e) => setTempSettings({...tempSettings, queueSubtitle: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white/40 focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all font-bold" />
+                    </div>
                   </div>
                 </div>
+              </div>
 
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase tracking-[0.2em] text-white/40 ml-4">Descrição</label>
-                  <textarea 
-                    rows={4}
-                    value={tempSettings.heroDescription || ''}
-                    onChange={(e) => setTempSettings({...tempSettings, heroDescription: e.target.value})}
-                    className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all resize-none"
-                  />
+              <div className="lg:col-span-4 space-y-6">
+                <div className="glass p-8 rounded-[48px] border border-white/10 space-y-6 sticky top-8">
+                  <div className="w-16 h-16 bg-brand-primary/20 rounded-3xl flex items-center justify-center text-brand-primary mx-auto shadow-lg shadow-brand-primary/10">
+                    <Save size={32} />
+                  </div>
+                  <div className="text-center space-y-2">
+                    <h4 className="text-lg font-black uppercase tracking-tight text-white leading-tight">Salvar Alterações</h4>
+                    <p className="text-white/40 text-[10px] font-black uppercase tracking-widest">Confirme para aplicar ao sistema</p>
+                  </div>
+                  <div className="space-y-3 bg-white/5 rounded-3xl p-5 border border-white/5">
+                    <div className="flex items-center justify-between text-[9px] font-black uppercase tracking-widest">
+                       <span className="text-white/40">Última edição:</span>
+                       <span className="text-white">{new Date().toLocaleTimeString()}</span>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => {
+                        onUpdateSettings(tempSettings);
+                        addNotification('Configurações atualizadas com sucesso!', 'success');
+                    }}
+                    className="w-full h-16 bg-brand-primary hover:bg-brand-primary/90 text-white rounded-[24px] shadow-xl shadow-brand-primary/30 flex items-center justify-center gap-3 text-xs font-black uppercase tracking-[0.2em] transition-all hover:scale-[1.02] active:scale-95"
+                  >
+                    <Check size={20} />
+                    Aplicar Agora
+                  </button>
+                  <button 
+                    onClick={() => setTempSettings(settings)}
+                    className="w-full h-14 bg-white/5 border border-white/10 text-white/40 rounded-[20px] hover:text-white hover:bg-white/10 transition-all text-[10px] font-black uppercase tracking-widest"
+                  >
+                    Descartar Mudanças
+                  </button>
                 </div>
               </div>
             </div>
-
-            <div className="space-y-8">
-              <h3 className="text-xl font-bold uppercase tracking-tight flex items-center gap-3">
-                <Settings className="text-brand-secondary" size={20} /> Editar Título da Fila
-              </h3>
-              
-              <div className="space-y-6">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-white/40 ml-4">Título Linha 1</label>
-                    <input 
-                      type="text"
-                      value={tempSettings.queueTitleLine1 || ''}
-                      onChange={(e) => setTempSettings({...tempSettings, queueTitleLine1: e.target.value})}
-                      className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-white/40 ml-4">Título Linha 2 (Negrito)</label>
-                    <input 
-                      type="text"
-                      value={tempSettings.queueTitleLine2 || ''}
-                      onChange={(e) => setTempSettings({...tempSettings, queueTitleLine2: e.target.value})}
-                      className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all"
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase tracking-[0.2em] text-white/40 ml-4">Subtítulo</label>
-                  <input 
-                    type="text"
-                    value={tempSettings.queueSubtitle || ''}
-                    onChange={(e) => setTempSettings({...tempSettings, queueSubtitle: e.target.value})}
-                    className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <button 
-              onClick={() => onUpdateSettings(tempSettings)}
-              className="w-full bg-brand-primary hover:bg-brand-primary/80 text-white font-black uppercase tracking-[0.2em] py-4 rounded-2xl shadow-lg shadow-brand-primary/20 transition-all active:scale-95"
-            >
-              Salvar Todas as Alterações
-            </button>
-          </div>
-        </AdminTabLoader>
-      )}
+          </AdminTabLoader>
+        )}
 
         {activeTab === 'files' && currentUserRole === 'admin' && (
           <AdminTabLoader isLoading={isLoadingSettings} skeleton={<SkeletonSettings />}>
-            <div className="space-y-8 max-w-4xl">
-            <div className="glass p-8 rounded-[40px] space-y-8">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-brand-primary/10 rounded-2xl flex items-center justify-center text-brand-primary">
-                    <LinkIcon size={24} />
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start max-w-6xl mx-auto">
+              <div className="lg:col-span-12">
+                <div className="glass p-10 rounded-[48px] border border-white/10 flex flex-col md:flex-row items-center justify-between gap-8 mb-4 relative overflow-hidden bg-brand-primary/[0.02]">
+                  <div className="absolute top-0 right-0 p-12 opacity-5 pointer-events-none text-brand-secondary">
+                    <CloudDownload size={200} />
                   </div>
-                  <div>
-                    <h3 className="text-xl font-bold uppercase tracking-tight text-white">Gerenciar Link de Download</h3>
-                    <p className="text-white/40 text-xs">Insira o link direto para o download do aplicativo.</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-white/40 ml-4">Nome do Arquivo/App</label>
-                    <input 
-                      type="text"
-                      placeholder="Ex: App Sorteio v1.0"
-                      value={linkName}
-                      onChange={(e) => setLinkName(e.target.value)}
-                      className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-white/40 ml-4">URL do Download</label>
-                    <input 
-                      type="text"
-                      placeholder="https://exemplo.com/app.apk"
-                      value={linkUrl}
-                      onChange={(e) => setLinkUrl(e.target.value)}
-                      className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all"
-                    />
-                  </div>
-                </div>
-
-                <button 
-                  onClick={handleLinkSubmit}
-                  className="w-full bg-brand-primary hover:bg-brand-primary/80 text-white font-black uppercase tracking-[0.2em] py-4 rounded-2xl shadow-lg shadow-brand-primary/20 transition-all active:scale-95 flex items-center justify-center gap-3"
-                >
-                  <Plus size={18} />
-                  Configurar Link de Download
-                </button>
-
-                {settings.downloadUrl && (
-                  <div className="glass p-6 rounded-3xl border border-white/10 flex items-center justify-between">
+                  <div className="space-y-3 relative z-10">
                     <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 bg-green-500/10 rounded-xl flex items-center justify-center text-green-500">
-                        <Check size={20} />
+                      <div className="w-16 h-16 bg-brand-secondary/10 rounded-3xl flex items-center justify-center text-brand-secondary">
+                        <CloudDownload size={32} />
                       </div>
-                      <div>
-                        <p className="text-white font-bold text-sm">Link Ativo no Botão</p>
-                        <p className="text-[10px] text-white/40 font-black uppercase tracking-widest truncate max-w-[200px]">
-                          {settings.downloadFileName || 'Link configurado'}
-                        </p>
+                      <div className="space-y-1">
+                        <h3 className="text-3xl font-black uppercase tracking-tight text-white leading-none">Repositório de Downloads</h3>
+                        <p className="text-white/40 text-[11px] font-black uppercase tracking-[0.2em]">Distribuição e Controle de Versões</p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <a 
-                        href={settings.downloadUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="p-3 rounded-xl bg-white/5 text-white/40 hover:bg-brand-primary hover:text-white transition-all"
-                        title="Testar Link"
-                      >
-                        <ExternalLink size={16} />
-                      </a>
-                      <button 
-                        onClick={() => onUpdateSettings({ ...settings, downloadUrl: '', downloadFileName: '' })}
-                        className="p-3 rounded-xl bg-white/5 text-white/40 hover:bg-red-500 hover:text-white transition-all"
-                        title="Remover Link"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="glass p-8 rounded-[40px] space-y-8">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-brand-secondary/10 rounded-2xl flex items-center justify-center text-brand-secondary">
-                    <Database size={24} />
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-bold uppercase tracking-tight text-white">Histórico de Links</h3>
-                    <p className="text-white/40 text-xs">Registros de todos os links configurados.</p>
                   </div>
                 </div>
-                {fileHistory.length > 0 && (
-                  <button 
-                    onClick={onClearFileHistory}
-                    className="w-10 h-10 rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white transition-all flex items-center justify-center"
-                    title="Limpar Histórico"
-                  >
-                    <Trash2 size={18} />
-                  </button>
-                )}
               </div>
 
-              <div className="space-y-4">
-                {isLoadingFileHistory ? (
-                  <div className="py-12 text-center">
-                    <div className="w-8 h-8 border-2 border-brand-primary/20 border-t-brand-primary rounded-full animate-spin mx-auto mb-4" />
-                    <p className="text-[10px] font-black uppercase tracking-widest text-white/20">Carregando histórico...</p>
+              <div className="lg:col-span-5 space-y-4">
+                <div className="flex items-center gap-4 px-4">
+                  <div className="w-1.5 h-6 bg-brand-secondary rounded-full shadow-[0_0_12px_rgba(245,158,11,0.8)]" />
+                  <h3 className="text-[12px] font-black uppercase tracking-[0.4em] text-white">Configurar Novo Release</h3>
+                </div>
+                <div className="glass p-8 rounded-[48px] border border-white/10 space-y-6">
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                       <label className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-4">Nome da Versão / Arquivo</label>
+                       <input type="text" placeholder="Ex: App Sorteio v2.1.0 (PRO)" value={linkName} onChange={(e) => setLinkName(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all font-bold" />
+                    </div>
+                    <div className="space-y-2">
+                       <label className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-4">URL Direta para Download</label>
+                       <div className="relative group">
+                         <div className="absolute left-6 top-1/2 -translate-y-1/2 text-white/20 group-focus-within:text-brand-primary transition-colors"><LinkIcon size={18} /></div>
+                         <input type="text" placeholder="https://cloud.com/app.apk" value={linkUrl} onChange={(e) => setLinkUrl(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 pl-14 pr-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all font-bold" />
+                       </div>
+                    </div>
+                    <div className="p-4 bg-brand-primary/5 border border-brand-primary/10 rounded-3xl space-y-2">
+                      <p className="text-[10px] text-white/40 font-black uppercase tracking-widest leading-relaxed">Nota ao Administrador:</p>
+                      <p className="text-[10px] text-white/60 leading-relaxed">Este link será exibido como a opção principal de download na tela de boas-vindas do sistema.</p>
+                    </div>
+                    <button 
+                      onClick={handleLinkSubmit}
+                      className="w-full h-16 bg-brand-primary hover:bg-brand-primary/90 text-white rounded-[24px] shadow-xl shadow-brand-primary/20 flex items-center justify-center gap-3 text-xs font-black uppercase tracking-[0.2em] transition-all hover:scale-[1.02] active:scale-95"
+                    >
+                      <Plus size={20} />
+                      Ativar e Registrar Link
+                    </button>
                   </div>
-                ) : fileHistory.length === 0 ? (
-                  <div className="py-12 text-center border-2 border-dashed border-white/5 rounded-3xl">
-                    <p className="text-[10px] font-black uppercase tracking-widest text-white/20">Nenhum link registrado.</p>
+                </div>
+
+                <div className="glass p-8 rounded-[48px] border border-white/10 space-y-4">
+                  <div className="flex items-center gap-3">
+                    <ShieldCheck size={20} className="text-brand-primary" />
+                    <h4 className="text-[10px] font-black uppercase tracking-widest text-white">Status do Deploy</h4>
                   </div>
-                ) : (
-                  fileHistory.map((item) => (
-                    <div key={item.id} className="glass p-4 rounded-2xl border border-white/5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 group">
-                      <div className="flex items-center gap-4 w-full sm:w-auto">
-                        <div className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center text-white/40 shrink-0">
-                          <LinkIcon size={18} />
+                  {settings.downloadUrl ? (
+                    <div className="bg-brand-primary/10 border border-brand-primary/20 rounded-3xl p-6 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div className="space-y-1">
+                          <p className="text-white font-black text-xs uppercase tracking-tight truncate max-w-[180px]">{settings.downloadFileName || 'PRODUÇÃO ATIVA'}</p>
+                          <p className="text-[9px] text-brand-primary font-black uppercase tracking-widest">Ativo no sistema</p>
                         </div>
-                        <div className="min-w-0">
-                          <p className="text-white font-bold text-sm truncate">{item.fileName}</p>
-                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">
-                            <span className="text-[8px] font-black uppercase tracking-widest text-white/30 whitespace-nowrap">
-                              {new Date(item.timestamp).toLocaleString()}
-                            </span>
-                            <span className="text-[8px] font-black uppercase tracking-widest text-white/20 truncate">
-                              por {item.uploaderEmail}
-                            </span>
+                        <div className="w-10 h-10 bg-brand-primary/20 rounded-xl flex items-center justify-center text-brand-primary"><Check size={20} /></div>
+                      </div>
+                      <div className="flex gap-2">
+                        <a href={settings.downloadUrl} target="_blank" rel="noopener noreferrer" className="flex-1 h-12 bg-white/5 border border-white/10 rounded-xl flex items-center justify-center text-white/40 hover:text-white hover:bg-brand-primary transition-all"><ExternalLink size={16} /></a>
+                        <button onClick={() => onUpdateSettings({ ...settings, downloadUrl: '', downloadFileName: '' })} className="flex-1 h-12 bg-white/5 border border-white/10 rounded-xl flex items-center justify-center text-white/40 hover:text-white hover:bg-red-500 transition-all"><Trash2 size={16} /></button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="bg-white/5 border border-white/5 border-dashed rounded-3xl p-8 text-center">
+                      <p className="text-[10px] text-white/20 font-black uppercase tracking-widest">Nenhum Link de Produção</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="lg:col-span-7 space-y-4">
+                <div className="flex items-center justify-between px-4">
+                  <div className="flex items-center gap-4">
+                    <div className="w-1.5 h-6 bg-brand-primary rounded-full shadow-[0_0_12px_rgba(5,150,105,0.8)]" />
+                    <h3 className="text-[12px] font-black uppercase tracking-[0.4em] text-white">Versões Anteriores</h3>
+                  </div>
+                  {fileHistory.length > 0 && (
+                    <button onClick={onClearFileHistory} className="text-[10px] font-black uppercase tracking-[0.2em] text-red-400 hover:text-red-500 transition-colors">Limpar Tudo</button>
+                  )}
+                </div>
+
+                <div className="space-y-4">
+                  {isLoadingFileHistory ? (
+                    <div className="glass p-20 rounded-[48px] text-center">
+                       <div className="w-10 h-10 border-4 border-brand-primary/30 border-t-brand-primary rounded-full animate-spin mx-auto mb-4" />
+                       <p className="text-[10px] font-black uppercase tracking-widest text-white/20">Sincronizando histórico...</p>
+                    </div>
+                  ) : fileHistory.length === 0 ? (
+                    <div className="glass p-20 rounded-[48px] border-2 border-dashed border-white/5 flex flex-col items-center justify-center text-center space-y-4">
+                      <div className="w-16 h-16 bg-white/5 rounded-3xl flex items-center justify-center text-white/10"><Database size={32} /></div>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-white/20">O histórico de versões está vazio</p>
+                    </div>
+                  ) : (
+                    fileHistory.map((item) => (
+                      <motion.div key={item.id} layout initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="glass p-6 rounded-[40px] flex items-center justify-between group border border-white/5 hover:border-brand-primary/30 transition-all">
+                        <div className="flex items-center gap-5 overflow-hidden">
+                          <div className="w-14 h-14 bg-white/5 rounded-[20px] flex items-center justify-center text-white/20 shrink-0 group-hover:bg-brand-primary/10 group-hover:text-brand-primary transition-colors">
+                            <FileIcon size={24} />
+                          </div>
+                          <div className="min-w-0">
+                            <h4 className="text-sm font-black text-white uppercase tracking-tight truncate">{item.fileName}</h4>
+                            <div className="flex items-center gap-3 mt-1 overflow-hidden">
+                              <span className="text-[9px] font-black uppercase tracking-widest text-white/20 whitespace-nowrap">{new Date(item.timestamp).toLocaleDateString()}</span>
+                              <span className="w-1 h-1 bg-white/10 rounded-full shrink-0" />
+                              <span className="text-[9px] font-black uppercase tracking-widest text-brand-primary/60 truncate">por {item.uploaderEmail}</span>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                      <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-                        <button 
-                          onClick={() => onUpdateSettings({ ...settings, downloadUrl: item.downloadUrl, downloadFileName: item.fileName })}
-                          className="flex-1 sm:flex-none p-2 rounded-lg bg-white/5 text-white/40 hover:bg-brand-primary hover:text-white transition-all flex items-center justify-center"
-                          title="Ativar no Botão"
-                        >
-                          <Zap size={14} />
-                        </button>
-                        <a 
-                          href={item.downloadUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex-1 sm:flex-none p-2 rounded-lg bg-white/5 text-white/40 hover:bg-brand-secondary hover:text-white transition-all flex items-center justify-center"
-                          title="Acessar Link"
-                        >
-                          <ExternalLink size={14} />
-                        </a>
-                        <button 
-                          onClick={() => onDeleteFileHistoryItem(item.id)}
-                          className="flex-1 sm:flex-none p-2 rounded-lg bg-white/5 text-white/40 hover:bg-red-500 hover:text-white transition-all flex items-center justify-center"
-                          title="Excluir Registro"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    </div>
-                  ))
-                )}
+                        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-all translate-x-4 group-hover:translate-x-0 ml-4">
+                          <button onClick={() => onUpdateSettings({ ...settings, downloadUrl: item.downloadUrl, downloadFileName: item.fileName })} className="w-12 h-12 rounded-2xl bg-brand-primary text-white flex items-center justify-center hover:scale-110 active:scale-90 transition-all" title="Restaurar Versão"><Zap size={18} /></button>
+                          <a href={item.downloadUrl} target="_blank" rel="noopener noreferrer" className="w-12 h-12 rounded-2xl bg-white/5 text-white/40 flex items-center justify-center hover:text-white hover:bg-brand-secondary transition-all" title="Baixar"><Download size={18} /></a>
+                          <button onClick={() => onDeleteFileHistoryItem(item.id)} className="w-12 h-12 rounded-2xl bg-white/5 text-white/40 flex items-center justify-center hover:text-red-500 hover:bg-red-500/10 transition-all" title="Remover"><Trash2 size={18} /></button>
+                        </div>
+                      </motion.div>
+                    ))
+                  )}
+                </div>
               </div>
             </div>
-          </div>
           </AdminTabLoader>
         )}
       </div>
@@ -3454,14 +3293,41 @@ const AdminPanel = ({
   );
 };
 
-const HeroCard = ({ queueCount, settings, calledEmployee, isLastCalled, currentQueue }: { 
+const HeroCard = ({ queueCount, settings, calledEmployee, isLastCalled, currentQueue, onShuffle }: { 
   queueCount: number, 
   settings: AppSettings, 
   calledEmployee: Employee | null, 
   isLastCalled: boolean,
-  currentQueue: Employee[]
+  currentQueue: Employee[],
+  onShuffle: () => Promise<boolean>
 }) => {
   const [time, setTime] = useState(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+
+  const isPublicShuffleAllowed = useMemo(() => {
+    if (!settings.publicShuffleEnabled) return false;
+    
+    // Check if there are at least 2 active employees to allow shuffle
+    if (queueCount < 2) return false;
+    
+    const now = new Date();
+    const currentDay = now.getDay();
+    
+    // Respect lotteryDays if set, otherwise default to Monday-Friday (1-5)
+    const allowedDays = settings.lotteryDays || [1, 2, 3, 4, 5];
+    if (!allowedDays.includes(currentDay)) return false;
+
+    // Use local date YYYY-MM-DD
+    const today = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
+    
+    if (settings.lastLotteryDate === today) return false;
+    
+    const currentHHmm = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
+    
+    const start = (settings.publicShuffleStartTime || '08:00').substring(0, 5);
+    const end = (settings.publicShuffleEndTime || '18:00').substring(0, 5);
+    
+    return currentHHmm >= start && currentHHmm <= end;
+  }, [settings.publicShuffleEnabled, settings.lastLotteryDate, settings.publicShuffleStartTime, settings.publicShuffleEndTime, settings.lotteryDays, time, queueCount]);
 
   const handleDownload = () => {
     if (!currentQueue || currentQueue.length === 0) return;
@@ -3558,6 +3424,16 @@ const HeroCard = ({ queueCount, settings, calledEmployee, isLastCalled, currentQ
                   {settings.downloadFileName || 'Baixar App'}
                 </span>
               </a>
+            )}
+
+            {isPublicShuffleAllowed && (
+              <button 
+                onClick={() => onShuffle()}
+                className="px-5 py-3 rounded-full bg-purple-600 text-white flex items-center justify-center gap-2 hover:scale-105 active:scale-95 transition-all shadow-lg shadow-purple-600/20"
+              >
+                <Dices size={16} />
+                <span className="text-[10px] font-black uppercase tracking-widest">Sorteio Público</span>
+              </button>
             )}
           </div>
         </div>
@@ -4376,8 +4252,8 @@ function AppContent() {
       const minutes = now.getMinutes().toString().padStart(2, '0');
       const currentTime = `${hours}:${minutes}`;
       
-      // Use local date string (YYYY-MM-DD) to avoid timezone issues with UTC
-      const todayStr = now.toLocaleDateString('en-CA');
+      // Manual formatting to avoid locale and timezone issues
+      const todayStr = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
       const targetTime = settings.lotteryTime || '11:00';
 
       if (
@@ -4644,7 +4520,7 @@ function AppContent() {
 
       const historyId = Math.random().toString(36).substr(2, 9);
       const now = new Date();
-      const todayStr = now.toLocaleDateString('en-CA');
+      const todayStr = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
       
       const historyEntry: LotteryHistory = {
         id: historyId,
@@ -4666,7 +4542,9 @@ function AppContent() {
         lastLotteryDate: todayStr,
         lastLotteryTimestamp: now.toISOString(),
         endOfRoundPosition: activeEmployees.length,
-        currentCallPosition: 1
+        currentCallPosition: 1,
+        lastCalledEmployeeId: null,
+        lastCalledTimestamp: null
       } as AppSettings;
 
       await setDoc(doc(db, 'settings', 'global'), updateData);
@@ -5141,6 +5019,7 @@ function AppContent() {
                   calledEmployee={showCallPopup ? calledEmployeeData : null}
                   isLastCalled={showCallPopup && calledEmployeeData ? queue.filter(e => e.isActive).every(e => e.position <= calledEmployeeData.position) : false}
                   currentQueue={queue}
+                  onShuffle={() => handleShuffle('manual')}
                 />
                 
                 {history.length > 0 && (
@@ -5297,7 +5176,7 @@ function AppContent() {
                               <ChevronRight size={10} className="text-brand-secondary" />
                             </div>
                           </div>
-                          <h4 className="text-white font-bold uppercase tracking-tight text-base truncate">
+                          <h4 className="text-white font-bold uppercase tracking-tight text-base">
                             {item.winnerName}
                           </h4>
                         </div>
