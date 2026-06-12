@@ -12,6 +12,7 @@ import {
   ChevronLeft,
   Trophy,
   Settings,
+  HelpCircle,
   ArrowRight,
   ArrowLeft,
   Plus,
@@ -98,6 +99,7 @@ interface Employee {
   position: number;
   photoUrl?: string;
   isActive: boolean;
+  isUnsynced?: boolean;
 }
 
 interface AppSettings {
@@ -137,6 +139,9 @@ interface LotteryHistory {
   winnerId: string;
   type?: 'manual' | 'automatic';
   fullList: { id: string; name: string; photoUrl?: string }[];
+  creatorName?: string;
+  creatorPhoto?: string;
+  creatorType?: 'admin' | 'coordinator' | 'automatic' | 'public';
 }
 
 interface FileHistory {
@@ -586,12 +591,323 @@ const LotteryResultModal = ({ historyItem, onClose }: { historyItem: LotteryHist
   );
 };
 
-const Header = ({ onAdminClick, isAuthenticated, settings, localVoiceEnabled, onToggleVoice }: { 
+const HelpManualModal = ({ 
+  currentUserRole, 
+  onClose 
+}: { 
+  currentUserRole: 'admin' | 'coordinator' | null; 
+  onClose: () => void;
+}) => {
+  const [activeTab, setActiveTab] = useState<'common' | 'coordinator' | 'admin'>(() => {
+    if (currentUserRole === 'admin') return 'admin';
+    if (currentUserRole === 'coordinator') return 'coordinator';
+    return 'common';
+  });
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 bg-brand-bg/90 backdrop-blur-md z-[200] flex items-center justify-center p-4 overflow-y-auto"
+    >
+      <motion.div 
+        initial={{ scale: 0.95, y: 20 }}
+        animate={{ scale: 1, y: 0 }}
+        exit={{ scale: 0.95, y: 20 }}
+        className="glass w-full max-w-2xl rounded-[40px] border border-white/10 flex flex-col max-h-[90vh] shadow-2xl relative overflow-hidden bg-brand-bg/95"
+      >
+        {/* Header */}
+        <div className="p-6 md:p-8 border-b border-white/5 relative">
+          <button 
+            onClick={onClose}
+            className="absolute top-6 right-6 w-10 h-10 rounded-full bg-white/5 hover:bg-white/10 text-white flex items-center justify-center transition-all active:scale-95 border border-white/5"
+            title="Fechar"
+          >
+            <X size={18} />
+          </button>
+          
+          <div className="flex items-center gap-3 mb-2">
+            <div className="w-10 h-10 bg-brand-secondary/10 rounded-2xl flex items-center justify-center text-brand-secondary">
+              <HelpCircle size={20} />
+            </div>
+            <div>
+              <h3 className="text-xl md:text-2xl font-black uppercase tracking-tight text-white leading-none">Manual do Sistema</h3>
+              <p className="text-white/40 text-[9px] md:text-[10px] font-black uppercase tracking-widest mt-1">Guia de Instruções e Boas Práticas</p>
+            </div>
+          </div>
+          
+          {/* Access Level Tag */}
+          <div className="mt-4 flex items-center gap-2 bg-white/[0.02] border border-white/5 rounded-2xl p-3">
+            <span className="text-[9px] font-black uppercase tracking-widest text-white/40">Seu nível de acesso atual:</span>
+            <span className={`px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest border shrink-0 ${
+              currentUserRole === 'admin' 
+                ? 'bg-red-500/10 text-red-400 border-red-500/20' 
+                : currentUserRole === 'coordinator' 
+                ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' 
+                : 'bg-green-500/10 text-green-400 border-green-500/20'
+            }`}>
+              {currentUserRole === 'admin' ? 'Administrador' : currentUserRole === 'coordinator' ? 'Coordenador' : 'Usuário Comum / Funcionário'}
+            </span>
+          </div>
+        </div>
+
+        {/* Tab Selection */}
+        <div className="px-6 md:px-8 pt-4 flex gap-1.5 overflow-x-auto no-scrollbar border-b border-white/5 bg-white/[0.01]">
+          {[
+            { id: 'common', label: 'Comum / Fila', icon: <Users size={12} />, roleText: 'Todos os Usuários' },
+            { id: 'coordinator', label: 'Coordenador', icon: <UserIcon size={12} />, roleText: 'Operador de Sorteio' },
+            { id: 'admin', label: 'Administrador', icon: <Shield size={12} />, roleText: 'Controles de Sistema' }
+          ].map((tab) => {
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as any)}
+                className={`flex-1 min-w-[130px] flex flex-col items-center gap-1.5 px-4 py-3 rounded-t-2xl transition-all relative ${
+                  isActive 
+                    ? 'border-t-2 border-brand-secondary bg-white/[0.03] text-brand-secondary' 
+                    : 'text-white/40 hover:text-white/60 hover:bg-white/[0.01]'
+                }`}
+              >
+                <div className="flex items-center gap-1.5">
+                  {tab.icon}
+                  <span className="text-[10px] font-black uppercase tracking-widest text-inherit whitespace-nowrap">{tab.label}</span>
+                </div>
+                <span className="text-[7px] text-white/30 font-bold uppercase tracking-wider">{tab.roleText}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Body content */}
+        <div className="flex-1 overflow-y-auto p-6 md:p-8 space-y-6 text-white leading-relaxed custom-scrollbar max-h-[50vh]">
+          {activeTab === 'common' && (
+            <div className="space-y-6">
+              <div className="bg-brand-primary/[0.03] border border-brand-primary/10 rounded-[24px] p-5">
+                <h4 className="text-sm font-black text-white uppercase tracking-wider mb-2 flex items-center gap-2 text-brand-primary">
+                  <Leaf size={16} /> Bem-vindo ao Sorteio Amazonas
+                </h4>
+                <p className="text-white/70 text-xs leading-relaxed">
+                  Este sistema foi desenvolvido para organizar, automatizar e transmitir a ordem de atendimento e os sorteios de forma totalmente auditável, rápida e integrada.
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                <h4 className="text-[11px] font-black uppercase tracking-widest text-brand-secondary flex items-center gap-2">
+                  <Sparkles size={14} /> Como funciona para Funcionários/Membros?
+                </h4>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-4 space-y-2">
+                    <span className="text-[8px] font-black text-white/40 uppercase tracking-widest block">Passo 01 / Cadastro</span>
+                    <h5 className="font-bold text-xs text-white uppercase tracking-tight">Presença Cadastrada</h5>
+                    <p className="text-white/50 text-[11px] leading-relaxed">
+                      Seu nome e foto devem ser inseridos pelo Coordenador na lista de presença. Pergunte à coordenação se você já foi inscrito na rodada atual.
+                    </p>
+                  </div>
+
+                  <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-4 space-y-2">
+                    <span className="text-[8px] font-black text-white/40 uppercase tracking-widest block">Passo 02 / Presença Ativa</span>
+                    <h5 className="font-bold text-xs text-white uppercase tracking-tight">Status na Fila</h5>
+                    <p className="text-white/50 text-[11px] leading-relaxed">
+                      Mantenha-se <strong className="text-green-400 font-bold">Ativo</strong> para ser elegível para o próximo sorteio. Se precisar sair mais cedo ou se ausentar, o operador mudará seu status para <strong className="text-red-400 font-bold">Inativo</strong> para não atrasar o fluxo.
+                    </p>
+                  </div>
+
+                  <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-4 space-y-2">
+                    <span className="text-[8px] font-black text-white/40 uppercase tracking-widest block">Passo 03 / O Sorteio</span>
+                    <h5 className="font-bold text-xs text-white uppercase tracking-tight">Embaralhamento Transparente</h5>
+                    <p className="text-white/50 text-[11px] leading-relaxed">
+                      Quando o sorteio é disparado pelos operadores, o sistema realiza um embaralhamento simulado em tempo real com todos os membros elegíveis para definir as ordens de chamada.
+                    </p>
+                  </div>
+
+                  <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-4 space-y-2">
+                    <span className="text-[8px] font-black text-white/40 uppercase tracking-widest block">Passo 04 / Chamadas</span>
+                    <h5 className="font-bold text-xs text-white uppercase tracking-tight">Anúncio por Voz Integrado</h5>
+                    <p className="text-white/50 text-[11px] leading-relaxed">
+                      O painel principal exibirá sua convocação em destaque acompanhada por uma chamada por voz audível do sistema. Fique atento aos alto-falantes!
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-5 space-y-3">
+                <h4 className="text-[11px] font-black uppercase tracking-widest text-white flex items-center gap-2">
+                  <Clock size={14} className="text-brand-primary" /> Visualização Geral Pública
+                </h4>
+                <ul className="space-y-2 text-[11px] text-white/60 list-disc list-inside">
+                  <li><strong className="text-white">Aba "Sorteio Atual"</strong>: Exibe em tempo real quem é o funcionário selecionado atualmente, a ordem de chamados anterior e a fila de próximos para atendimento.</li>
+                  <li><strong className="text-white">Aba "Histórico"</strong>: Permite conferir todos os rankings acumulados e as ordens de serviço geradas nos sorteios anteriores finalizados.</li>
+                  <li><strong className="text-white">Compartilhamento</strong>: Clique no ícone de compartilhamento ou exportações para baixar os relatórios das ordens de serviço em PDF ou Excel.</li>
+                </ul>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'coordinator' && (
+            <div className="space-y-6">
+              <div className="bg-blue-500/[0.02] border border-blue-500/10 rounded-[24px] p-5">
+                <h4 className="text-sm font-black text-white uppercase tracking-wider mb-2 flex items-center gap-2 text-blue-400">
+                  <UserIcon size={16} /> Operador de Fila & Sorteios
+                </h4>
+                <p className="text-white/70 text-xs leading-relaxed">
+                  O Coordenador é o principal gestor de campo. Tem permissões especiais para comandar sorteios casuais, gerenciar a entrada/saída de membros na rodada, pausar/retomar a fila de presença, e desengatar alertas por voz.
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                <h4 className="text-[11px] font-black uppercase tracking-widest text-brand-secondary flex items-center gap-2">
+                  <Zap size={14} /> Atribuições do Coordenador de Fila
+                </h4>
+
+                <div className="space-y-3">
+                  <div className="flex items-start gap-3 bg-white/[0.01] border border-white/5 rounded-2xl p-4">
+                    <div className="w-8 h-8 rounded-xl bg-orange-500/10 text-orange-400 flex items-center justify-center shrink-0">
+                      <Users size={16} />
+                    </div>
+                    <div>
+                      <h5 className="font-bold text-xs text-white uppercase tracking-tight">Gerenciamento no Dia a Dia</h5>
+                      <p className="text-white/50 text-[11px] mt-1 leading-relaxed">
+                        Ative ou desative funcionários à medida que chegam ou se ausentam. Adicione novos na fila instantaneamente. O cálculo de posições é automático com base nas admissões.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3 bg-white/[0.01] border border-white/5 rounded-2xl p-4">
+                    <div className="w-8 h-8 rounded-xl bg-purple-500/10 text-purple-400 flex items-center justify-center shrink-0">
+                      <Dices size={16} />
+                    </div>
+                    <div>
+                      <h5 className="font-bold text-xs text-white uppercase tracking-tight">Comando de Sorteio</h5>
+                      <p className="text-white/50 text-[11px] mt-1 leading-relaxed">
+                        Dispare o botão "Sorteio" para iniciar a simulação visual e sonora. O sistema escolhe aleatoriamente um membro <strong className="text-green-400 font-bold">Ativo</strong> cadastrado, gera o ID da chamada, aciciona no histórico e emite o áudio.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3 bg-white/[0.01] border border-white/5 rounded-2xl p-4">
+                    <div className="w-8 h-8 rounded-xl bg-green-500/10 text-green-400 flex items-center justify-center shrink-0">
+                      <Volume2 size={16} />
+                    </div>
+                    <div>
+                      <h5 className="font-bold text-xs text-white uppercase tracking-tight">Controle Operacional de Voz</h5>
+                      <p className="text-white/50 text-[11px] mt-1 leading-relaxed">
+                        Se a área estiver barulhenta ou em horários restritos, mude o botão de som por voz no topo para <strong className="text-red-400 font-bold">Desativado</strong>. Como coordenador, você pode ligar e desligar esse recurso à vontade nos tablets ou computadores operacionais.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3 bg-white/[0.01] border border-white/5 rounded-2xl p-4">
+                    <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center shrink-0">
+                      <Settings size={16} />
+                    </div>
+                    <div>
+                      <h5 className="font-bold text-xs text-white uppercase tracking-tight">Operação Off-line Inteligente</h5>
+                      <p className="text-white/50 text-[11px] mt-1 leading-relaxed">
+                        Se a rede oscilar ou cair, você pode <strong className="text-amber-400 font-bold">Adicionar Funcionários normalmente</strong>. Eles entrarão em estado de pendência offline com um indicador amarelo. Quando a rede restabelecer, o sistema sincronizará de forma 100% automatizada com o Firestore do Firebase!
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'admin' && (
+            <div className="space-y-6">
+              <div className="bg-red-500/[0.02] border border-red-500/10 rounded-[24px] p-5">
+                <h4 className="text-sm font-black text-white uppercase tracking-wider mb-2 flex items-center gap-2 text-red-400">
+                  <Shield size={16} /> Administração Master & Segurança
+                </h4>
+                <p className="text-white/70 text-xs leading-relaxed">
+                  O Administrador possui privilégios ilimitados. É o responsável por gerenciar as contas de coordenadores, restaurar backups do sistema, configurar os perfis globais e customizar a identidade (textos, cabeçalhos, logos, etc.) do aplicativo.
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                <h4 className="text-[11px] font-black uppercase tracking-widest text-brand-secondary flex items-center gap-2">
+                  <Settings size={14} /> Painel Administrativo Exclusivo
+                </h4>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-4 space-y-2">
+                    <div className="flex items-center gap-2 text-red-400 font-bold text-xs">
+                      <UserPlus size={14} />
+                      <h5>Gestão de Contas (Admins)</h5>
+                    </div>
+                    <p className="text-white/50 text-[10px] leading-relaxed">
+                      Cadastre novos Administradores ou Coordenadores no banco, redefina senhas de acesso de forma direta e desative contas imediatamente quando necessário.
+                    </p>
+                  </div>
+
+                  <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-4 space-y-2">
+                    <div className="flex items-center gap-2 text-blue-400 font-bold text-xs">
+                      <Database size={14} />
+                      <h5>Backup & Manutenção</h5>
+                    </div>
+                    <p className="text-white/50 text-[10px] leading-relaxed">
+                      Visualize a tabela JSON completa das coleções no Firestore. Exclua históricos antigos para resetar o espaço, ou importe planilhas de arquivos XLS e CSV de presença rápida de uma só vez.
+                    </p>
+                  </div>
+
+                  <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-4 space-y-2">
+                    <div className="flex items-center gap-2 text-purple-400 font-bold text-xs">
+                      <Zap size={14} />
+                      <h5>Configuração Global</h5>
+                    </div>
+                    <p className="text-white/50 text-[10px] leading-relaxed">
+                      Altere o título do topo do app, subtítulos das páginas e slogans. Configure as vozes favoritas do sintetizador de falas (masculinas/femininas) de acordo com o hardware do cliente.
+                    </p>
+                  </div>
+
+                  <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-4 space-y-2">
+                    <div className="flex items-center gap-2 text-green-400 font-bold text-xs">
+                      <FileIcon size={14} />
+                      <h5>Central de Arquivos</h5>
+                    </div>
+                    <p className="text-white/50 text-[10px] leading-relaxed">
+                      Controle a biblioteca de uploads. Todos os backups de excel, imagens carregadas ou logs ficam listados com tamanhos e atalhos rápidos de download ou expurgo.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-5 space-y-2">
+                <h4 className="text-[11px] font-black uppercase tracking-widest text-white flex items-center gap-2">
+                  <AlertCircle size={14} className="text-red-500" /> Notas de Segurança Crítica
+                </h4>
+                <p className="text-white/50 text-[10px] leading-relaxed">
+                  Evite compartilhar contas administrativas. Toda modificação de sistema, alteração de banco e exclusão de funcionários ou sorteios atualiza instantaneamente as instâncias do Firestore em todos os tablets e canais transmissores conectados no mesmo projeto.
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="p-6 bg-white/[0.01] border-t border-white/5 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <span className="text-[8px] font-black uppercase tracking-[0.2em] text-white/20 font-mono">Suporte Técnico Amazonas v2.1</span>
+          <button 
+            onClick={onClose}
+            className="w-full sm:w-auto px-8 py-3.5 bg-brand-primary text-white font-black uppercase tracking-widest rounded-2xl shadow-lg transition-all active:scale-95 text-xs"
+          >
+            Fechar Manual
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+};
+
+const Header = ({ onAdminClick, isAuthenticated, settings, localVoiceEnabled, onToggleVoice, onHelpClick }: { 
   onAdminClick: () => void, 
   isAuthenticated: boolean, 
   settings: AppSettings,
   localVoiceEnabled: boolean,
-  onToggleVoice: () => void
+  onToggleVoice: () => void,
+  onHelpClick: () => void
 }) => (
   <header className="px-4 md:px-6 py-4 md:py-8 flex items-center justify-between sticky top-0 z-50 bg-brand-bg/80 backdrop-blur-md">
     <div className="flex items-center gap-2 md:gap-3">
@@ -607,6 +923,14 @@ const Header = ({ onAdminClick, isAuthenticated, settings, localVoiceEnabled, on
     </div>
     
     <div className="flex items-center gap-2 md:gap-3 shrink-0">
+      <button 
+        onClick={onHelpClick}
+        className="w-8 h-8 md:w-10 md:h-10 rounded-xl md:rounded-2xl glass flex items-center justify-center transition-all text-white/70 hover:text-white hover:bg-white/5 active:scale-95"
+        title="Manual de Instruções e Ajuda"
+      >
+        <HelpCircle size={16} />
+      </button>
+
       <button 
         onClick={onToggleVoice}
         className={`w-8 h-8 md:w-10 md:h-10 rounded-xl md:rounded-2xl glass flex items-center justify-center transition-all ${localVoiceEnabled ? 'text-brand-secondary' : 'text-white/30 hover:text-white/60'}`}
@@ -639,7 +963,7 @@ const Login = ({ onLogin, onBack }: { onLogin: () => void, onBack: () => void })
       console.log("Login successful:", result.user.email);
       onLogin();
     } catch (err: any) {
-      console.error("Google Login Error:", err);
+      console.warn("Google Login Error (Handled):", err);
       let message = "Erro ao fazer login com Google.";
       
       if (err.code === 'auth/unauthorized-domain') {
@@ -684,7 +1008,7 @@ const Login = ({ onLogin, onBack }: { onLogin: () => void, onBack: () => void })
       await signInWithEmailAndPassword(auth, emailToUse, password);
       onLogin();
     } catch (err: any) {
-      console.error("Email Login Error:", err);
+      console.warn("Email Login Error (Handled):", err);
       let message = "Erro ao fazer login.";
       
       if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
@@ -695,6 +1019,8 @@ const Login = ({ onLogin, onBack }: { onLogin: () => void, onBack: () => void })
         message = "Acesso bloqueado temporariamente por muitas tentativas falhas. Tente novamente mais tarde.";
       } else if (err.code === 'auth/user-disabled') {
         message = "Esta conta de administrador foi desativada.";
+      } else if (err.code === 'auth/network-request-failed') {
+        message = "Erro de conexão de rede. Verifique se o seu dispositivo está conectado à internet.";
       }
       
       setError(message);
@@ -834,7 +1160,8 @@ const AdminPanel = ({
   currentHistoryPage,
   setCurrentHistoryPage,
   ITEMS_PER_PAGE,
-  speak
+  speak,
+  onHelpClick
 }: { 
   onLogout: () => void, 
   queue: Employee[], 
@@ -872,7 +1199,8 @@ const AdminPanel = ({
   currentHistoryPage: number,
   setCurrentHistoryPage: React.Dispatch<React.SetStateAction<number>>,
   ITEMS_PER_PAGE: number,
-  speak: (text: string, force?: boolean) => void
+  speak: (text: string, force?: boolean) => void,
+  onHelpClick: () => void
 }) => {
   const [newName, setNewName] = useState('');
   const [newPhotoUrl, setNewPhotoUrl] = useState('');
@@ -896,7 +1224,13 @@ const AdminPanel = ({
   const [isSavingAdmin, setIsSavingAdmin] = useState(false);
   const [showAddAdminConfirm, setShowAddAdminConfirm] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [adminToDelete, setAdminToDelete] = useState<AdminUser | null>(null);
+  const [employeeToDelete, setEmployeeToDelete] = useState<Employee | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+
+  const isMasterAdmin = useMemo(() => {
+    return !!(auth.currentUser?.email && ADMIN_EMAILS.includes(auth.currentUser.email.toLowerCase()));
+  }, [auth.currentUser?.email]);
 
   const handleCallNext = async () => {
     const activeQueueSorted = [...queue].filter(e => e.isActive).sort((a, b) => a.position - b.position);
@@ -1587,6 +1921,13 @@ const AdminPanel = ({
           </div>
           <div className="flex items-center gap-3 w-full sm:w-auto">
             <button 
+              onClick={onHelpClick}
+              className="px-5 py-4 sm:py-3 rounded-2xl glass text-brand-secondary hover:bg-brand-secondary/10 transition-all text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 border border-brand-secondary/10 hover:border-brand-secondary/30"
+              title="Manual de Instruções e Ajuda"
+            >
+              <HelpCircle size={16} /> <span className="hidden xs:inline">Ajuda</span>
+            </button>
+            <button 
               onClick={onViewPublic}
               className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-4 sm:py-3 rounded-2xl glass text-white hover:bg-white/10 transition-all text-xs font-black uppercase tracking-widest"
             >
@@ -2161,10 +2502,10 @@ const AdminPanel = ({
                               </div>
                               <div className="min-w-0 flex-1">
                                 <span className="text-white font-black uppercase tracking-tight text-base block mb-1">{emp.name}</span>
-                                <div className="flex items-center gap-2 mb-3">
-                                  <div className={`w-1.5 h-1.5 rounded-full ${emp.isActive ? 'bg-green-500' : 'bg-red-500'}`} />
-                                  <span className={`text-[9px] font-black uppercase tracking-widest ${emp.isActive ? 'text-green-500/60' : 'text-red-500/60'}`}>
-                                    {emp.isActive ? 'Ativo' : 'Inativo'}
+                                <div className="flex flex-wrap items-center gap-2 mb-3">
+                                  <div className={`w-1.5 h-1.5 rounded-full ${emp.isUnsynced ? 'bg-amber-500 animate-pulse' : emp.isActive ? 'bg-green-500' : 'bg-red-500'}`} />
+                                  <span className={`text-[9px] font-black uppercase tracking-widest ${emp.isUnsynced ? 'text-amber-500' : emp.isActive ? 'text-green-500/60' : 'text-red-500/60'}`}>
+                                    {emp.isUnsynced ? 'Pendente (Off-line)' : emp.isActive ? 'Ativo' : 'Inativo'}
                                   </span>
                                 </div>
                                 
@@ -2207,9 +2548,7 @@ const AdminPanel = ({
                                   </button>
                                   <button 
                                     onClick={() => {
-                                      if (window.confirm(`Deseja realmente excluir ${emp.name}?`)) {
-                                        onRemove(emp.id);
-                                      }
+                                      setEmployeeToDelete(emp);
                                     }}
                                     className="w-10 h-10 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white flex items-center justify-center transition-all"
                                     title="Excluir"
@@ -2803,112 +3142,126 @@ const AdminPanel = ({
                   </h3>
                 </div>
                 
-                <div className="glass p-8 rounded-[48px] border border-white/10 space-y-6">
-                  <div className="flex justify-center mb-8">
-                     {isCameraOpen && activeCameraType === 'admins' ? (
-                      <div className="relative w-48 h-48 rounded-[40px] overflow-hidden bg-black ring-4 ring-brand-primary/20">
-                        <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover mirror" />
-                        <div className="absolute bottom-4 inset-x-0 flex justify-center items-center gap-3">
-                          <button onClick={stopCamera} className="w-10 h-10 rounded-full bg-black/40 backdrop-blur-md border border-white/20 flex items-center justify-center text-white hover:bg-red-500 transition-all"><X size={18} /></button>
-                          <button onClick={capturePhoto} className="w-12 h-12 rounded-full bg-brand-primary flex items-center justify-center text-white shadow-xl hover:scale-105 active:scale-95 transition-all"><Camera size={24} /></button>
+                {isMasterAdmin ? (
+                  <div className="glass p-8 rounded-[48px] border border-white/10 space-y-6">
+                    <div className="flex justify-center mb-8">
+                       {isCameraOpen && activeCameraType === 'admins' ? (
+                        <div className="relative w-48 h-48 rounded-[40px] overflow-hidden bg-black ring-4 ring-brand-primary/20">
+                          <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover mirror" />
+                          <div className="absolute bottom-4 inset-x-0 flex justify-center items-center gap-3">
+                            <button onClick={stopCamera} className="w-10 h-10 rounded-full bg-black/40 backdrop-blur-md border border-white/20 flex items-center justify-center text-white hover:bg-red-500 transition-all"><X size={18} /></button>
+                            <button onClick={capturePhoto} className="w-12 h-12 rounded-full bg-brand-primary flex items-center justify-center text-white shadow-xl hover:scale-105 active:scale-95 transition-all"><Camera size={24} /></button>
+                          </div>
                         </div>
-                      </div>
-                    ) : (
-                      <div className="relative group">
-                        <div className="w-48 h-48 rounded-[40px] bg-white/5 border-2 border-white/10 border-dashed flex items-center justify-center overflow-hidden transition-all group-hover:border-brand-primary/50">
-                          {adminPhotoUrl ? (
-                            <img src={adminPhotoUrl} alt="Preview" className="w-full h-full object-cover" />
-                          ) : (
-                            <UserIcon size={64} className="text-white/10" />
-                          )}
-                          {isAdminUploading && <div className="absolute inset-0 bg-brand-bg/60 flex items-center justify-center"><div className="w-8 h-8 border-4 border-brand-primary/30 border-t-brand-primary rounded-full animate-spin" /></div>}
+                      ) : (
+                        <div className="relative group">
+                          <div className="w-48 h-48 rounded-[40px] bg-white/5 border-2 border-white/10 border-dashed flex items-center justify-center overflow-hidden transition-all group-hover:border-brand-primary/50">
+                            {adminPhotoUrl ? (
+                              <img src={adminPhotoUrl} alt="Preview" className="w-full h-full object-cover" />
+                            ) : (
+                              <UserIcon size={64} className="text-white/10" />
+                            )}
+                            {isAdminUploading && <div className="absolute inset-0 bg-brand-bg/60 flex items-center justify-center"><div className="w-8 h-8 border-4 border-brand-primary/30 border-t-brand-primary rounded-full animate-spin" /></div>}
+                          </div>
+                          <div className="absolute -bottom-2 -right-2 flex gap-2">
+                            <button onClick={() => startCamera('admins')} className="w-12 h-12 bg-brand-primary text-white rounded-2xl flex items-center justify-center shadow-xl hover:scale-110 active:scale-95 transition-all"><Camera size={20} /></button>
+                            <label className="w-12 h-12 bg-white/10 text-white rounded-2xl flex items-center justify-center shadow-xl hover:bg-white/20 cursor-pointer transition-all border border-white/5">
+                              <Upload size={20} />
+                              <input type="file" accept="image/*" onChange={handleAdminFileUpload} className="hidden" />
+                            </label>
+                          </div>
                         </div>
-                        <div className="absolute -bottom-2 -right-2 flex gap-2">
-                          <button onClick={() => startCamera('admins')} className="w-12 h-12 bg-brand-primary text-white rounded-2xl flex items-center justify-center shadow-xl hover:scale-110 active:scale-95 transition-all"><Camera size={20} /></button>
-                          <label className="w-12 h-12 bg-white/10 text-white rounded-2xl flex items-center justify-center shadow-xl hover:bg-white/20 cursor-pointer transition-all border border-white/5">
-                            <Upload size={20} />
-                            <input type="file" accept="image/*" onChange={handleAdminFileUpload} className="hidden" />
-                          </label>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-4">Nome Completo</label>
-                      <input type="text" value={adminName} onChange={(e) => setAdminName(e.target.value)} placeholder="Ex: João Silva" className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all font-bold" />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-4">Usuário de Acesso</label>
-                      <input type="text" value={adminUsername} onChange={(e) => setAdminUsername(e.target.value.toLowerCase().replace(/\s+/g, ''))} placeholder="identificador" className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all font-bold" />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-4">E-mail</label>
-                      <input type="email" value={adminEmail} onChange={(e) => setAdminEmail(e.target.value)} readOnly={!!editingAdminId} placeholder="email@exemplo.com" className={`w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all font-bold ${editingAdminId ? 'opacity-50 cursor-not-allowed' : ''}`} />
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-4">Senha</label>
-                        <input type="password" value={adminPassword} onChange={(e) => setAdminPassword(e.target.value)} placeholder="Senha" className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all" />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-4">Confirmar</label>
-                        <input type="password" value={adminConfirmPassword} onChange={(e) => setAdminConfirmPassword(e.target.value)} placeholder="Confirme" className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all" />
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-4">Cargo / Função</label>
-                      <select value={adminRole} onChange={(e) => setAdminRole(e.target.value as 'admin' | 'coordinator')} className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all appearance-none font-bold">
-                        <option value="admin" className="bg-brand-bg text-white">Administrador Gestor</option>
-                        <option value="coordinator" className="bg-brand-bg text-white">Coordenador da Fila</option>
-                      </select>
-                    </div>
-
-                    <div className="flex gap-3 pt-4">
-                      <button 
-                        disabled={isAdminUploading || isSavingAdmin}
-                        onClick={() => {
-                           const trimmedName = adminName.trim();
-                           const trimmedEmail = adminEmail.trim().toLowerCase();
-                           const trimmedUsername = adminUsername.trim();
-                           if (!trimmedName || !trimmedEmail || (!editingAdminId && !adminPassword)) {
-                             addNotification('Preencha os campos obrigatórios.', 'error');
-                             return;
-                           }
-                           if (adminPassword !== adminConfirmPassword) {
-                             addNotification('Senhas não coincidem.', 'error');
-                             return;
-                           }
-                           if (editingAdminId) {
-                             setIsSavingAdmin(true);
-                             onUpdateAdmin(editingAdminId, { 
-                               name: trimmedName, 
-                               username: trimmedUsername, 
-                               role: adminRole, 
-                               photoUrl: adminPhotoUrl || undefined,
-                               password: adminPassword || undefined
-                             }).finally(() => {
-                               setIsSavingAdmin(false);
-                               setEditingAdminId(null);
-                             });
-                           } else {
-                             setShowAddAdminConfirm(true);
-                           }
-                        }}
-                        className="flex-1 h-16 bg-brand-primary hover:bg-brand-primary/90 text-white rounded-[24px] flex items-center justify-center gap-3 text-xs font-black uppercase tracking-[0.2em] transition-all shadow-xl shadow-brand-primary/20 disabled:opacity-50"
-                      >
-                        {isSavingAdmin ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : (editingAdminId ? <Check size={20} /> : <Plus size={20} />)}
-                        {editingAdminId ? 'Salvar Alterações' : 'Criar Conta'}
-                      </button>
-                      {editingAdminId && (
-                        <button onClick={() => { setEditingAdminId(null); setAdminName(''); setAdminEmail(''); setAdminUsername(''); setAdminPassword(''); setAdminConfirmPassword(''); setAdminPhotoUrl(''); setAdminRole('coordinator'); }} className="w-16 h-16 bg-white/5 border border-white/10 rounded-[24px] flex items-center justify-center text-white/40 hover:text-red-400 hover:bg-red-400/10 transition-all">
-                          <X size={24} />
-                        </button>
                       )}
                     </div>
+
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-4">Nome Completo</label>
+                        <input type="text" value={adminName} onChange={(e) => setAdminName(e.target.value)} placeholder="Ex: João Silva" className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all font-bold" />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-4">Usuário de Acesso</label>
+                        <input type="text" value={adminUsername} onChange={(e) => setAdminUsername(e.target.value.toLowerCase().replace(/\s+/g, ''))} placeholder="identificador" className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all font-bold" />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-4">E-mail</label>
+                        <input type="email" value={adminEmail} onChange={(e) => setAdminEmail(e.target.value)} readOnly={!!editingAdminId} placeholder="email@exemplo.com" className={`w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all font-bold ${editingAdminId ? 'opacity-50 cursor-not-allowed' : ''}`} />
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-4">Senha</label>
+                          <input type="password" value={adminPassword} onChange={(e) => setAdminPassword(e.target.value)} placeholder="Senha" className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all" />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-4">Confirmar</label>
+                          <input type="password" value={adminConfirmPassword} onChange={(e) => setAdminConfirmPassword(e.target.value)} placeholder="Confirme" className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all" />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-4">Cargo / Função</label>
+                        <select value={adminRole} onChange={(e) => setAdminRole(e.target.value as 'admin' | 'coordinator')} className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all appearance-none font-bold">
+                          <option value="admin" className="bg-brand-bg text-white">Administrador Gestor</option>
+                          <option value="coordinator" className="bg-brand-bg text-white">Coordenador da Fila</option>
+                        </select>
+                      </div>
+
+                      <div className="flex gap-3 pt-4">
+                        <button 
+                          disabled={isAdminUploading || isSavingAdmin}
+                          onClick={() => {
+                             const trimmedName = adminName.trim();
+                             const trimmedEmail = adminEmail.trim().toLowerCase();
+                             const trimmedUsername = adminUsername.trim();
+                             if (!trimmedName || !trimmedEmail || (!editingAdminId && !adminPassword)) {
+                               addNotification('Preencha os campos obrigatórios.', 'error');
+                               return;
+                             }
+                             if (adminPassword !== adminConfirmPassword) {
+                               addNotification('Senhas não coincidem.', 'error');
+                               return;
+                             }
+                             if (editingAdminId) {
+                               setIsSavingAdmin(true);
+                               onUpdateAdmin(editingAdminId, { 
+                                 name: trimmedName, 
+                                 username: trimmedUsername, 
+                                 role: adminRole, 
+                                 photoUrl: adminPhotoUrl || undefined,
+                                 password: adminPassword || undefined
+                               }).finally(() => {
+                                 setIsSavingAdmin(false);
+                                 setEditingAdminId(null);
+                               });
+                             } else {
+                               setShowAddAdminConfirm(true);
+                             }
+                          }}
+                          className="flex-1 h-16 bg-brand-primary hover:bg-brand-primary/90 text-white rounded-[24px] flex items-center justify-center gap-3 text-xs font-black uppercase tracking-[0.2em] transition-all shadow-xl shadow-brand-primary/20 disabled:opacity-50"
+                        >
+                          {isSavingAdmin ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : (editingAdminId ? <Check size={20} /> : <Plus size={20} />)}
+                          {editingAdminId ? 'Salvar Alterações' : 'Criar Conta'}
+                        </button>
+                        {editingAdminId && (
+                          <button onClick={() => { setEditingAdminId(null); setAdminName(''); setAdminEmail(''); setAdminUsername(''); setAdminPassword(''); setAdminConfirmPassword(''); setAdminPhotoUrl(''); setAdminRole('coordinator'); }} className="w-16 h-16 bg-white/5 border border-white/10 rounded-[24px] flex items-center justify-center text-white/40 hover:text-red-400 hover:bg-red-400/10 transition-all">
+                            <X size={24} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="glass p-8 rounded-[48px] border border-white/10 space-y-4 text-center">
+                    <div className="w-16 h-16 bg-brand-secondary/10 text-brand-secondary rounded-3xl flex items-center justify-center mx-auto">
+                      <Shield size={32} />
+                    </div>
+                    <div className="space-y-1">
+                      <h4 className="text-white font-black uppercase text-sm tracking-tight">Acesso de Leitura</h4>
+                      <p className="text-white/40 text-xs leading-relaxed">
+                        Apenas <strong>Administradores Master</strong> têm permissão para adicionar, editar ou gerenciar os acessos da equipe de gestão.
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="lg:col-span-7 space-y-4">
@@ -2919,34 +3272,90 @@ const AdminPanel = ({
 
                 <div className="grid grid-cols-1 gap-4">
                   {admins.map((admin) => (
-                    <motion.div key={admin.id} layout initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="glass p-5 rounded-[40px] flex items-center justify-between group border border-white/5 hover:border-brand-primary/30 transition-all">
-                      <div className="flex items-center gap-5">
-                        <div className="w-16 h-16 rounded-[24px] bg-white/5 overflow-hidden border border-white/10 relative group-hover:scale-105 transition-transform duration-500">
-                          {admin.photoUrl ? (
-                            <img src={admin.photoUrl} alt={admin.name} className="w-full h-full object-cover" />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center text-xl font-black text-white/20 uppercase bg-gradient-to-br from-white/5 to-white/10">{admin.name.charAt(0)}</div>
-                          )}
-                          {/* Online status indicator removed if not in AdminUser type */}
-                        </div>
+                    <motion.div key={admin.id} layout initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="glass p-5 rounded-[40px] flex items-start gap-5 border border-white/5 hover:border-brand-primary/30 transition-all">
+                      <div className="w-16 h-16 rounded-[24px] bg-white/5 overflow-hidden border border-white/10 relative group-hover:scale-105 transition-transform duration-500 shrink-0">
+                        {admin.photoUrl ? (
+                          <img src={admin.photoUrl} alt={admin.name} className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-xl font-black text-white/20 uppercase bg-gradient-to-br from-white/5 to-white/10">{admin.name.charAt(0)}</div>
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1 space-y-3">
                         <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <h4 className="text-sm font-black text-white uppercase tracking-tight">{admin.name}</h4>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-white font-black uppercase tracking-tight text-base block">{admin.name}</span>
                             <span className="text-[8px] font-black uppercase tracking-[0.2em] bg-white/10 text-white/40 px-2 py-0.5 rounded-full">@{admin.username || 'user'}</span>
                           </div>
-                          <div className="flex items-center gap-3">
-                            <span className={`text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-full ${admin.role === 'admin' ? 'bg-brand-primary/10 text-brand-primary border border-brand-primary/20' : 'bg-blue-500/10 text-blue-400 border border-blue-500/20'}`}>
-                              {admin.role === 'admin' ? 'Administrador' : 'Coordenador'}
+                          
+                          <div className="flex items-center gap-3 flex-wrap">
+                            <span className={`text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-full ${
+                              ADMIN_EMAILS.includes(admin.email.toLowerCase()) 
+                                ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20 shadow-[0_0_12px_rgba(245,158,11,0.2)]'
+                                : admin.role === 'admin' 
+                                  ? 'bg-brand-primary/10 text-brand-primary border border-brand-primary/20' 
+                                  : 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
+                            }`}>
+                              {ADMIN_EMAILS.includes(admin.email.toLowerCase()) ? 'Administrador Master' : admin.role === 'admin' ? 'Administrador' : 'Coordenador'}
                             </span>
-                            <span className="text-[9px] font-black uppercase tracking-widest text-white/20">{admin.email}</span>
+                            <span className="text-[9px] font-black uppercase tracking-widest text-white/40">{admin.email}</span>
+                          </div>
+                          
+                          <div className="flex items-center gap-2">
+                            <div className={`w-1.5 h-1.5 rounded-full ${admin.isActive !== false ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]' : 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]'}`} />
+                            <span className={`text-[9px] font-black uppercase tracking-widest ${admin.isActive !== false ? 'text-green-500/60' : 'text-red-500/60'}`}>
+                              {admin.isActive !== false ? 'Ativo' : 'Inativo'}
+                            </span>
                           </div>
                         </div>
-                      </div>
 
-                      <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-all translate-x-4 group-hover:translate-x-0">
-                        <button onClick={() => { setEditingAdminId(admin.id); setAdminName(admin.name); setAdminUsername(admin.username || ''); setAdminEmail(admin.email); setAdminRole(admin.role || 'coordinator'); setAdminPhotoUrl(admin.photoUrl || ''); setAdminPassword(''); setAdminConfirmPassword(''); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="w-12 h-12 rounded-2xl bg-white/5 text-white/40 flex items-center justify-center hover:bg-brand-primary hover:text-white transition-all"><Edit2 size={18} /></button>
-                        {admin.email !== auth.currentUser?.email && (
-                          <button onClick={() => { if(window.confirm('Excluir admin?')) onDeleteAdmin(admin.id); }} className="w-12 h-12 rounded-2xl bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white flex items-center justify-center transition-all"><Trash2 size={18} /></button>
+                        {isMasterAdmin && (
+                          <div className="flex items-center gap-1.5 pt-1">
+                            <button 
+                              onClick={() => { 
+                                setEditingAdminId(admin.id); 
+                                setAdminName(admin.name); 
+                                setAdminUsername(admin.username || ''); 
+                                setAdminEmail(admin.email); 
+                                setAdminRole(admin.role || 'coordinator'); 
+                                setAdminPhotoUrl(admin.photoUrl || ''); 
+                                setAdminPassword(''); 
+                                setAdminConfirmPassword(''); 
+                                window.scrollTo({ top: 0, behavior: 'smooth' }); 
+                              }} 
+                              className="w-10 h-10 rounded-xl bg-white/5 text-white/40 flex items-center justify-center hover:bg-brand-primary hover:text-white transition-all"
+                              title="Editar"
+                            >
+                              <Edit2 size={16} />
+                            </button>
+                            
+                            {admin.email !== auth.currentUser?.email && !ADMIN_EMAILS.includes(admin.email.toLowerCase()) && (
+                              <>
+                                <button 
+                                  onClick={() => {
+                                    onUpdateAdmin(admin.id, { isActive: admin.isActive === false });
+                                  }}
+                                  className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${
+                                    admin.isActive !== false 
+                                      ? 'bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white' 
+                                      : 'bg-green-500/10 text-green-400 hover:bg-green-500 hover:text-white'
+                                  }`}
+                                  title={admin.isActive !== false ? 'Desativar' : 'Ativar'}
+                                >
+                                  {admin.isActive !== false ? <X size={16} /> : <Check size={16} />}
+                                </button>
+                                
+                                <button 
+                                  onClick={() => { 
+                                    setAdminToDelete(admin);
+                                  }} 
+                                  className="w-10 h-10 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white flex items-center justify-center transition-all"
+                                  title="Excluir"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </>
+                            )}
+                          </div>
                         )}
                       </div>
                     </motion.div>
@@ -2956,6 +3365,60 @@ const AdminPanel = ({
             </div>
 
             <AnimatePresence>
+              {adminToDelete && (
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[500] flex items-center justify-center p-4 bg-brand-bg/90 backdrop-blur-sm">
+                  <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="glass max-w-md w-full p-8 rounded-[40px] space-y-6">
+                    <div className="w-16 h-16 bg-red-500/20 rounded-2xl flex items-center justify-center text-red-500 mx-auto animate-pulse">
+                      <Trash2 size={32} />
+                    </div>
+                    <div className="text-center space-y-2">
+                       <h4 className="text-xl font-bold uppercase tracking-tight text-white">Excluir Administrador</h4>
+                       <p className="text-white/40 text-xs leading-relaxed">Você tem certeza que deseja remover o acesso de <span className="text-red-400 font-bold">{adminToDelete.name}</span> ({adminToDelete.email})? Esta ação é irreversível.</p>
+                    </div>
+                    <div className="flex gap-3">
+                      <button onClick={() => setAdminToDelete(null)} className="flex-1 py-4 glass text-white/40 font-black uppercase tracking-widest rounded-2xl">Cancelar</button>
+                      <button 
+                        onClick={async () => {
+                          const id = adminToDelete.id;
+                          setAdminToDelete(null);
+                          await onDeleteAdmin(id);
+                        }}
+                        className="flex-1 py-4 bg-red-500 text-white font-black uppercase tracking-widest rounded-2xl shadow-lg shadow-red-500/20"
+                      >
+                        Excluir
+                      </button>
+                    </div>
+                  </motion.div>
+                </motion.div>
+              )}
+
+              {employeeToDelete && (
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[500] flex items-center justify-center p-4 bg-brand-bg/90 backdrop-blur-sm">
+                  <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="glass max-w-md w-full p-8 rounded-[40px] space-y-6">
+                    <div className="w-16 h-16 bg-red-500/20 rounded-2xl flex items-center justify-center text-red-500 mx-auto animate-pulse">
+                      <Trash2 size={32} />
+                    </div>
+                    <div className="text-center space-y-2">
+                       <h4 className="text-xl font-bold uppercase tracking-tight text-white">Excluir Funcionário</h4>
+                       <p className="text-white/40 text-xs leading-relaxed">Você deseja realmente excluir <span className="text-red-400 font-bold">{employeeToDelete.name}</span> da fila de sorteio?</p>
+                    </div>
+                    <div className="flex gap-3">
+                      <button onClick={() => setEmployeeToDelete(null)} className="flex-1 py-4 glass text-white/40 font-black uppercase tracking-widest rounded-2xl">Cancelar</button>
+                      <button 
+                        onClick={() => {
+                          const id = employeeToDelete.id;
+                          setEmployeeToDelete(null);
+                          onRemove(id);
+                        }}
+                        className="flex-1 py-4 bg-red-500 text-white font-black uppercase tracking-widest rounded-2xl shadow-lg shadow-red-500/20"
+                      >
+                        Excluir
+                      </button>
+                    </div>
+                  </motion.div>
+                </motion.div>
+              )}
+
               {showAddAdminConfirm && (
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[500] flex items-center justify-center p-4 bg-brand-bg/90 backdrop-blur-sm">
                   <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="glass max-w-md w-full p-8 rounded-[40px] space-y-6">
@@ -3769,6 +4232,7 @@ function AppContent() {
   const [currentUserRole, setCurrentUserRole] = useState<'admin' | 'coordinator' | null>(null);
   const [publicTab, setPublicTab] = useState<'current' | 'history'>('current');
   const [selectedLotteryForList, setSelectedLotteryForList] = useState<LotteryHistory | null>(null);
+  const [showHelpModal, setShowHelpModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [notifications, setNotifications] = useState<{ id: string, message: string, type: 'success' | 'error' | 'info', description?: string }[]>([]);
   const [queue, setQueue] = useState<Employee[]>([]);
@@ -3791,6 +4255,76 @@ function AppContent() {
   const [calledEmployeeData, setCalledEmployeeData] = useState<Employee | null>(null);
   const [showCallPopup, setShowCallPopup] = useState(false);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
+  const [offlineQueue, setOfflineQueue] = useState<Employee[]>(() => {
+    try {
+      const saved = localStorage.getItem('offline_queue_employees');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem('offline_queue_employees', JSON.stringify(offlineQueue));
+  }, [offlineQueue]);
+
+  // Synchronize offline queue when coming online
+  useEffect(() => {
+    let isMounted = true;
+    const syncOfflineQueue = async () => {
+      if (offlineQueue.length === 0 || !navigator.onLine) return;
+      
+      console.log('Iniciando sincronização da fila offline...', offlineQueue);
+      const toSync = [...offlineQueue];
+      
+      for (const emp of toSync) {
+        if (!isMounted) break;
+        try {
+          // Calculate current max position dynamically to avoid collision with new live entries
+          const currentMaxPosition = queue.length > 0 ? Math.max(...queue.map(e => e.position)) : 0;
+          const freshEmp: Employee = {
+            id: emp.id,
+            name: emp.name,
+            isActive: emp.isActive,
+            position: currentMaxPosition + 1,
+            ...(emp.photoUrl ? { photoUrl: emp.photoUrl } : {})
+          };
+          
+          await setDoc(doc(db, 'queue', emp.id), freshEmp);
+          
+          try {
+            await updateDoc(doc(db, 'settings', 'global'), {
+              endOfRoundPosition: freshEmp.position
+            });
+          } catch (settErr) {
+            console.error('Settings update failed during sync:', settErr);
+          }
+          
+          if (isMounted) {
+            setOfflineQueue(prev => prev.filter(item => item.id !== emp.id));
+            addNotification(`${emp.name} sincronizado com sucesso!`, 'success');
+          }
+        } catch (syncErr) {
+          console.error(`Erro ao sincronizar ${emp.name}:`, syncErr);
+        }
+      }
+    };
+
+    if (!isOffline) {
+      const timer = setTimeout(() => {
+        syncOfflineQueue();
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [isOffline, offlineQueue, queue]);
+
+  const mergedAdminQueue = useMemo(() => {
+    const realIds = new Set(queue.map(e => e.id));
+    const pendingOffline = offlineQueue
+      .filter(e => !realIds.has(e.id))
+      .map(e => ({ ...e, isUnsynced: true }));
+    return [...queue, ...pendingOffline];
+  }, [queue, offlineQueue]);
   const [localVoiceEnabled, setLocalVoiceEnabled] = useState(() => {
     const saved = localStorage.getItem('localVoiceEnabled');
     return saved !== null ? saved === 'true' : true;
@@ -3802,6 +4336,10 @@ function AppContent() {
     localStorage.setItem('localVoiceEnabled', String(newValue));
     addNotification(newValue ? 'Chamada por voz ativada' : 'Chamada por voz desativada', 'info');
   };
+
+  const isMasterAdmin = useMemo(() => {
+    return !!(auth.currentUser?.email && ADMIN_EMAILS.includes(auth.currentUser.email.toLowerCase()));
+  }, [auth.currentUser, isAuthenticated, currentUserRole]);
 
   const addNotification = (message: string, type: 'success' | 'error' | 'info' = 'info', description?: string) => {
     const id = Math.random().toString(36).substr(2, 9);
@@ -3906,6 +4444,20 @@ function AppContent() {
             }
 
             console.error('❌ Erro de voz:', event.error);
+
+            if (event.error === 'synthesis-failed') {
+               console.warn('⚠️ Falha na síntese de voz com a voz selecionada. Tentando voz padrão do sistema.');
+               const fallbackUtterance = new SpeechSynthesisUtterance(text);
+               fallbackUtterance.lang = 'pt-BR';
+               fallbackUtterance.rate = 0.9;
+               fallbackUtterance.pitch = 1;
+               fallbackUtterance.volume = 1;
+               fallbackUtterance.onerror = (e) => {
+                 console.error('❌ Erro no fallback de voz padrão:', e.error);
+               };
+               window.speechSynthesis.speak(fallbackUtterance);
+               return;
+            }
             
             // Fallback agressivo de idioma
             if ((event.error === 'language-unavailable' || event.error === 'voice-unavailable') && utterance.lang !== 'pt') {
@@ -4200,7 +4752,13 @@ function AppContent() {
 
     setIsLoadingAdmins(true);
     const unsubscribe = onSnapshot(collection(db, 'admins'), (snapshot) => {
-      const items = snapshot.docs.map(doc => doc.data() as AdminUser);
+      const items = snapshot.docs.map(doc => {
+        const data = doc.data() as AdminUser;
+        return {
+          ...data,
+          id: data.id || doc.id
+        };
+      });
       setAdmins(items);
       setIsLoadingAdmins(false);
     }, (error) => {
@@ -4330,13 +4888,24 @@ function AppContent() {
 
   const addEmployee = async (name: string, photoUrl?: string) => {
     const id = Math.random().toString(36).substr(2, 9);
+    const maxPosition = Math.max(
+      queue.length > 0 ? Math.max(...queue.map(e => e.position)) : 0,
+      offlineQueue.length > 0 ? Math.max(...offlineQueue.map(e => e.position)) : 0
+    );
     const newEmp: Employee = {
       id,
       name,
       isActive: true,
-      position: (queue.length > 0 ? Math.max(...queue.map(e => e.position)) : 0) + 1,
+      position: maxPosition + 1,
       ...(photoUrl ? { photoUrl } : {})
     };
+
+    if (!navigator.onLine || isOffline) {
+      setOfflineQueue(prev => [...prev, newEmp]);
+      addNotification(`${name} adicionado à fila local temporária!`, 'info', 'Será sincronizado automaticamente ao recuperar a conexão.');
+      return;
+    }
+
     try {
       await setDoc(doc(db, 'queue', id), newEmp);
       // Update end of round position to include the new employee
@@ -4346,13 +4915,19 @@ function AppContent() {
       });
       addNotification(`${name} adicionado à fila!`, 'success');
     } catch (err) {
-      const errMsg = err instanceof Error ? err.message : String(err);
-      addNotification('Erro ao adicionar funcionário.', 'error', errMsg);
-      handleFirestoreError(err, OperationType.CREATE, `queue/${id}`);
+      console.warn('Falha ao gravar no Firestore, salvando na fila offline local:', err);
+      setOfflineQueue(prev => [...prev, newEmp]);
+      addNotification(`${name} salvo na fila local devido à perda de rede!`, 'info', 'Será sincronizado automaticamente ao recuperar o sinal.');
     }
   };
 
   const updateEmployee = async (id: string, name: string, photoUrl?: string) => {
+    if (offlineQueue.some(e => e.id === id)) {
+      setOfflineQueue(prev => prev.map(e => e.id === id ? { ...e, name, photoUrl } : e));
+      addNotification(`${name} atualizado na fila local!`, 'success');
+      return;
+    }
+
     try {
       console.log('Updating employee:', { id, name, photoUrl });
       const updates: any = { name };
@@ -4372,6 +4947,13 @@ function AppContent() {
   };
 
   const toggleEmployeeActive = async (id: string, currentStatus: boolean) => {
+    if (offlineQueue.some(e => e.id === id)) {
+      setOfflineQueue(prev => prev.map(e => e.id === id ? { ...e, isActive: !currentStatus } : e));
+      const empName = offlineQueue.find(e => e.id === id)?.name;
+      addNotification(`Status de ${empName} atualizado localmente.`, 'info');
+      return;
+    }
+
     try {
       await updateDoc(doc(db, 'queue', id), { isActive: !currentStatus });
       addNotification(`Status de ${queue.find(e => e.id === id)?.name} atualizado.`, 'info');
@@ -4383,6 +4965,13 @@ function AppContent() {
   };
 
   const removeEmployee = async (id: string) => {
+    if (offlineQueue.some(e => e.id === id)) {
+      const empName = offlineQueue.find(e => e.id === id)?.name;
+      setOfflineQueue(prev => prev.filter(e => e.id !== id));
+      addNotification(`${empName} removido da fila local.`, 'info');
+      return;
+    }
+
     const empName = queue.find(e => e.id === id)?.name;
     try {
       await deleteDoc(doc(db, 'queue', id));
@@ -4522,6 +5111,27 @@ function AppContent() {
       const now = new Date();
       const todayStr = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
       
+      let creatorName = 'Sorteio Público';
+      let creatorPhoto: string | undefined = undefined;
+      let creatorType: 'admin' | 'coordinator' | 'automatic' | 'public' = 'public';
+
+      if (type === 'automatic') {
+        creatorName = 'Sistema de Sorteio';
+        creatorType = 'automatic';
+      } else if (isAuthenticated && auth.currentUser) {
+        const loggedAdmin = admins.find(a => a.email.toLowerCase() === auth.currentUser?.email?.toLowerCase());
+        if (loggedAdmin) {
+          creatorName = loggedAdmin.name;
+          creatorPhoto = loggedAdmin.photoUrl;
+          creatorType = loggedAdmin.role;
+        } else {
+          creatorName = auth.currentUser.displayName || auth.currentUser.email || 'Administrador Master';
+          creatorPhoto = auth.currentUser.photoURL || undefined;
+          const isHardcodedAdmin = auth.currentUser.email && ADMIN_EMAILS.includes(auth.currentUser.email.toLowerCase());
+          creatorType = isHardcodedAdmin ? 'admin' : 'coordinator';
+        }
+      }
+
       const historyEntry: LotteryHistory = {
         id: historyId,
         timestamp: now.toISOString(),
@@ -4532,7 +5142,10 @@ function AppContent() {
           id: emp.id, 
           name: emp.name, 
           ...(emp.photoUrl ? { photoUrl: emp.photoUrl } : {})
-        }))
+        })),
+        creatorName,
+        creatorPhoto,
+        creatorType
       };
 
       await setDoc(doc(db, 'history', historyId), historyEntry);
@@ -4614,6 +5227,10 @@ function AppContent() {
   };
 
   const addAdmin = async (name: string, email: string, role: 'admin' | 'coordinator', password?: string, photoUrl?: string, username?: string) => {
+    if (!isMasterAdmin) {
+      addNotification('Acesso negado', 'error', 'Apenas o Administrador Master pode criar contas.');
+      return;
+    }
     const adminId = email.toLowerCase();
     
     // Check if admin already exists in Firestore
@@ -4640,8 +5257,6 @@ function AppContent() {
         await createAuthUser(secondaryAuth, email, password);
         await signOut(secondaryAuth);
       } catch (authErr: any) {
-        console.error("Auth Creation Error:", authErr);
-        
         // Define user-friendly messages for common Firebase Auth errors
         let errorTitle = 'Erro ao criar conta de acesso';
         let errorMessage = 'Ocorreu um erro inesperado ao configurar as credenciais.';
@@ -4670,10 +5285,12 @@ function AppContent() {
         }
 
         if (isCritical) {
+          console.error("Auth Creation Error:", authErr);
           addNotification(errorTitle, 'error', errorMessage);
           await deleteApp(secondaryApp);
           return;
         } else {
+          console.warn("Auth Creation Warning (Handled):", authErr);
           addNotification(errorTitle, 'info', errorMessage);
         }
       } finally {
@@ -4712,6 +5329,10 @@ function AppContent() {
   };
 
   const updateAdmin = async (id: string, updates: Partial<AdminUser>) => {
+    if (!isMasterAdmin) {
+      addNotification('Acesso negado', 'error', 'Apenas o Administrador Master pode editar contas.');
+      return;
+    }
     try {
       const oldAdmin = admins.find(a => a.id === id);
       const batch = writeBatch(db);
@@ -4745,6 +5366,10 @@ function AppContent() {
   };
 
   const deleteAdmin = async (id: string) => {
+    if (!isMasterAdmin) {
+      addNotification('Acesso negado', 'error', 'Apenas o Administrador Master pode remover contas.');
+      return;
+    }
     try {
       const adminToDelete = admins.find(a => a.id === id);
       const batch = writeBatch(db);
@@ -4861,6 +5486,10 @@ function AppContent() {
       return a.position - b.position;
     });
 
+  const isLotteryActive = useMemo(() => {
+    return (settings.endOfRoundPosition || 0) > 0 && queue.some(e => e.isActive && e.position > 0) && history.length > 0;
+  }, [settings.endOfRoundPosition, queue, history]);
+
   if (!isAuthReady || isLoadingSettings) {
     return <SystemLoader />;
   }
@@ -4885,6 +5514,15 @@ function AppContent() {
           <LotteryResultModal 
             historyItem={selectedLotteryForList} 
             onClose={() => setSelectedLotteryForList(null)} 
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showHelpModal && (
+          <HelpManualModal 
+            currentUserRole={currentUserRole}
+            onClose={() => setShowHelpModal(false)}
           />
         )}
       </AnimatePresence>
@@ -4932,7 +5570,7 @@ function AppContent() {
           )}
           <AdminPanel 
             onLogout={handleLogout} 
-          queue={queue} 
+          queue={mergedAdminQueue} 
           onAdd={addEmployee}
           onRemove={removeEmployee}
           onToggleActive={toggleEmployeeActive}
@@ -4968,6 +5606,7 @@ function AppContent() {
           setCurrentHistoryPage={setCurrentHistoryPage}
           ITEMS_PER_PAGE={ITEMS_PER_PAGE}
           speak={speak}
+          onHelpClick={() => setShowHelpModal(true)}
         />
         </>
       )}
@@ -4980,6 +5619,7 @@ function AppContent() {
             settings={settings}
             localVoiceEnabled={localVoiceEnabled}
             onToggleVoice={toggleLocalVoice}
+            onHelpClick={() => setShowHelpModal(true)}
           />
           
           {isOffline && (
@@ -5013,14 +5653,16 @@ function AppContent() {
 
             <div className="space-y-8">
               <div className="space-y-4">
-                <HeroCard 
-                  queueCount={queue.filter(e => e.isActive).length} 
-                  settings={settings} 
-                  calledEmployee={showCallPopup ? calledEmployeeData : null}
-                  isLastCalled={showCallPopup && calledEmployeeData ? queue.filter(e => e.isActive).every(e => e.position <= calledEmployeeData.position) : false}
-                  currentQueue={queue}
-                  onShuffle={() => handleShuffle('manual')}
-                />
+                {!isAuthenticated && (
+                  <HeroCard 
+                    queueCount={queue.filter(e => e.isActive).length} 
+                    settings={settings} 
+                    calledEmployee={showCallPopup ? calledEmployeeData : null}
+                    isLastCalled={showCallPopup && calledEmployeeData ? queue.filter(e => e.isActive).every(e => e.position <= calledEmployeeData.position) : false}
+                    currentQueue={queue}
+                    onShuffle={() => handleShuffle('manual')}
+                  />
+                )}
                 
                 {history.length > 0 && (
                   <motion.div 
@@ -5068,8 +5710,70 @@ function AppContent() {
               </button>
             </div>
 
-            {publicTab === 'current' && (isLoadingQueue || queue.some(e => e.isActive)) && (
+            {publicTab === 'current' && (isLoadingQueue || isLotteryActive) && (
               <section className="px-4 md:px-6 space-y-8">
+                {/* Responsável pelo Sorteio Card */}
+                {!isLoadingQueue && history[0] && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: -20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="glass p-6 rounded-[32px] border border-white/5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-brand-secondary/[0.02]"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="w-14 h-14 bg-white/5 rounded-2xl overflow-hidden shrink-0 border border-white/10 p-0.5 relative">
+                        {history[0].creatorPhoto ? (
+                          <img 
+                            src={history[0].creatorPhoto} 
+                            alt="" 
+                            className="w-full h-full object-cover rounded-xl" 
+                            referrerPolicy="no-referrer" 
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-brand-secondary bg-brand-secondary/10 rounded-xl">
+                            {history[0].creatorType === 'automatic' || history[0].type === 'automatic' ? (
+                              <Timer size={24} />
+                            ) : history[0].creatorType === 'public' ? (
+                              <Users size={24} />
+                            ) : (
+                              <UserIcon size={24} />
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      <div>
+                        <span className="text-[8px] font-black uppercase tracking-widest text-white/40 block mb-1">Responsável pelo Sorteio</span>
+                        <h4 className="text-white font-bold text-base leading-none">
+                          {history[0].creatorName || (history[0].type === 'automatic' ? 'Sorteio Automático' : 'Administrador')}
+                        </h4>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center gap-3">
+                      <span className={`px-4 py-2 rounded-full text-[9px] font-black uppercase tracking-widest border ${
+                        (history[0].creatorType === 'admin' || (!history[0].creatorType && history[0].type !== 'automatic')) 
+                          ? 'bg-red-500/10 text-red-400 border-red-500/20' 
+                          : history[0].creatorType === 'coordinator' 
+                          ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                          : (history[0].creatorType === 'automatic' || history[0].type === 'automatic')
+                          ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                          : 'bg-purple-500/10 text-purple-400 border-purple-500/20'
+                      }`}>
+                        {history[0].creatorType === 'admin' || (!history[0].creatorType && history[0].type !== 'automatic')
+                          ? 'Administrador'
+                          : history[0].creatorType === 'coordinator'
+                          ? 'Coordenador'
+                          : (history[0].creatorType === 'automatic' || history[0].type === 'automatic')
+                          ? 'Automático'
+                          : 'Público'}
+                      </span>
+                      
+                      <span className="text-[10px] font-medium text-white/40 glass px-4 py-2 rounded-full border border-white/5">
+                        {new Date(history[0].timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                  </motion.div>
+                )}
+
                 <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6">
                   <div className="text-center lg:text-left">
                     <h3 className="text-2xl md:text-4xl font-light uppercase tracking-tight text-white mb-2">
@@ -5124,6 +5828,20 @@ function AppContent() {
                       </>
                     )}
                   </AnimatePresence>
+                </div>
+              </section>
+            )}
+
+            {publicTab === 'current' && !isLoadingQueue && !isLotteryActive && (
+              <section className="px-4 md:px-6 py-12">
+                <div className="glass p-12 rounded-[40px] text-center border border-white/5 space-y-4 max-w-lg mx-auto">
+                  <div className="w-16 h-16 bg-brand-secondary/10 text-brand-secondary rounded-2xl flex items-center justify-center mx-auto mb-2 animate-pulse">
+                    <Dices size={32} />
+                  </div>
+                  <h4 className="text-xl font-bold uppercase tracking-tight text-white">Nenhum Sorteio Ativo</h4>
+                  <p className="text-white/40 text-xs leading-relaxed max-w-sm mx-auto">
+                    Não há nenhuma ordem de sorteio ativa no momento. Aguarde pelo início de um novo sorteio.
+                  </p>
                 </div>
               </section>
             )}

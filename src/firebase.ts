@@ -9,6 +9,7 @@ import {
   createUserWithEmailAndPassword
 } from 'firebase/auth';
 import { 
+  initializeFirestore,
   getFirestore, 
   collection, 
   doc, 
@@ -39,7 +40,9 @@ import firebaseConfig from '../firebase-applet-config.json';
 // Initialize Firebase
 export const firebaseConfigExport = firebaseConfig;
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+export const db = initializeFirestore(app, {
+  experimentalForceLongPolling: true,
+}, firebaseConfig.firestoreDatabaseId);
 
 // Enable offline persistence
 if (typeof window !== 'undefined') {
