@@ -1,3 +1,4 @@
+// criador por Sergio belo
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { 
   History,
@@ -58,8 +59,9 @@ import {
 import html2pdf from 'html2pdf.js';
 import * as XLSX from 'xlsx';
 import confetti from 'canvas-confetti';
-import { 
-  auth, 
+import { useQuery } from '@tanstack/react-query';
+import {  
+  auth,
   db, 
   googleProvider, 
   signInWithPopup, 
@@ -1398,50 +1400,109 @@ const AdminPanel = ({
     }
   };
 
-  const handleDownloadPDF = async (item: LotteryHistory) => {
+  const generatePdfHtml = (item: LotteryHistory) => {
     const dateStr = new Date(item.timestamp).toLocaleDateString('pt-BR');
     const timeStr = new Date(item.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-    
     const list = item.fullList || [];
     const mid = Math.ceil(list.length / 2);
     const leftCol = list.slice(0, mid);
     const rightCol = list.slice(mid);
 
+    return `
+      <div style="padding: 35px; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #111827; background: #ffffff; width: 210mm; box-sizing: border-box;">
+        <!-- Fixed Header with Logo and Title -->
+        <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 3px solid #059669; padding-bottom: 20px; margin-bottom: 25px;">
+          <div style="display: flex; align-items: center; gap: 15px;">
+            <div style="width: 52px; height: 52px; background: #059669; border-radius: 14px; display: flex; align-items: center; justify-content: center; color: white; font-weight: 900; font-size: 22px; box-shadow: 0 4px 12px rgba(5,150,105,0.25); letter-spacing: -1px;">
+              EA
+            </div>
+            <div>
+              <h1 style="font-size: 22px; font-weight: 900; text-transform: uppercase; color: #059669; margin: 0 0 3px 0; letter-spacing: 0.5px;">Edifício Amazonas</h1>
+              <p style="font-size: 10px; font-weight: 800; text-transform: uppercase; color: #6b7280; margin: 0; letter-spacing: 1px;">Relatório Oficial • Fila e Sorteio de Almoço</p>
+            </div>
+          </div>
+          <div style="text-align: right;">
+            <div style="background: #f0fdf4; border: 1px solid #bbf7d0; padding: 6px 12px; border-radius: 8px; display: inline-block;">
+              <span style="font-size: 9px; font-weight: 800; color: #059669; text-transform: uppercase; display: block;">Data e Horário</span>
+              <span style="font-size: 11px; font-weight: 900; color: #111827;">${dateStr} - ${timeStr}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Summary Bar -->
+        <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 12px; padding: 14px 20px; margin-bottom: 25px; display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <span style="font-size: 9px; font-weight: 800; text-transform: uppercase; color: #6b7280; display: block; margin-bottom: 2px;">Responsável pelo Sorteio</span>
+            <span style="font-size: 12px; font-weight: 900; color: #111827;">${item.creatorName || 'Sistema / Administrador'}</span>
+          </div>
+          <div>
+            <span style="font-size: 9px; font-weight: 800; text-transform: uppercase; color: #6b7280; display: block; margin-bottom: 2px;">Total de Funcionários</span>
+            <span style="font-size: 12px; font-weight: 900; color: #059669;">${list.length} Participantes</span>
+          </div>
+        </div>
+
+        <!-- Professional Formatted Tables (Two Columns) -->
+        <div style="display: flex; gap: 20px;">
+          <div style="flex: 1;">
+            <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
+              <thead>
+                <tr style="background: #059669; color: white;">
+                  <th style="padding: 8px 10px; text-align: center; font-weight: 800; text-transform: uppercase; width: 45px; border-top-left-radius: 6px;">Pos.</th>
+                  <th style="padding: 8px 10px; text-align: left; font-weight: 800; text-transform: uppercase; border-top-right-radius: 6px;">Nome do Funcionário</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${leftCol.map((emp, i) => `
+                  <tr style="background-color: ${i % 2 === 0 ? '#ffffff' : '#f9fafb'}; border-bottom: 1px solid #e5e7eb;">
+                    <td style="padding: 8px 10px; font-weight: 900; color: #059669; text-align: center;">${i + 1}º</td>
+                    <td style="padding: 8px 10px; font-weight: 700; text-transform: uppercase; color: #1f2937;">${emp.name}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+          <div style="flex: 1;">
+            <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
+              <thead>
+                <tr style="background: #059669; color: white;">
+                  <th style="padding: 8px 10px; text-align: center; font-weight: 800; text-transform: uppercase; width: 45px; border-top-left-radius: 6px;">Pos.</th>
+                  <th style="padding: 8px 10px; text-align: left; font-weight: 800; text-transform: uppercase; border-top-right-radius: 6px;">Nome do Funcionário</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rightCol.map((emp, i) => `
+                  <tr style="background-color: ${i % 2 === 0 ? '#ffffff' : '#f9fafb'}; border-bottom: 1px solid #e5e7eb;">
+                    <td style="padding: 8px 10px; font-weight: 900; color: #059669; text-align: center;">${mid + i + 1}º</td>
+                    <td style="padding: 8px 10px; font-weight: 700; text-transform: uppercase; color: #1f2937;">${emp.name}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- PDF Footer -->
+        <div style="margin-top: 35px; border-top: 1px solid #e5e7eb; padding-top: 15px; display: flex; justify-content: space-between; font-size: 9px; color: #9ca3af; text-transform: uppercase; font-weight: 700;">
+          <span>Edifício Amazonas • Sistema de Gestão de Fila</span>
+          <span>Emitido em ${new Date().toLocaleString('pt-BR')}</span>
+        </div>
+      </div>
+    `;
+  };
+
+  const handleDownloadPDF = async (item: LotteryHistory) => {
+    const dateStr = new Date(item.timestamp).toLocaleDateString('pt-BR');
+    
     const container = document.createElement('div');
     container.style.position = 'absolute';
     container.style.left = '0';
     container.style.top = '0';
     container.style.opacity = '0';
     container.style.pointerEvents = 'none';
-    container.style.width = '210mm'; // A4 width
+    container.style.width = '210mm';
     container.style.background = 'white';
     
-    container.innerHTML = `
-      <div style="padding: 40px; font-family: Arial, sans-serif; color: #1a1a1a;">
-        <div style="text-align: center; margin-bottom: 40px; border-bottom: 4px solid #059669; padding-bottom: 25px;">
-          <h1 style="font-size: 28px; font-weight: 900; text-transform: uppercase; color: #059669; margin-bottom: 8px;">FILA DO ALMOÇO EDIFÍCIO AMAZONAS</h1>
-          <p style="font-size: 16px; color: #4b5563; font-weight: 700; text-transform: uppercase;">DATA: ${dateStr} - ${timeStr}</p>
-        </div>
-        <div style="display: flex; gap: 60px;">
-          <div style="flex: 1;">
-            ${leftCol.map((emp, i) => `
-              <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid #e5e7eb;">
-                <span style="font-weight: 900; width: 40px; color: #059669; font-size: 14px;">${i + 1}º</span>
-                <span style="font-weight: 700; text-transform: uppercase; font-size: 12px; color: #111827;">${emp.name}</span>
-              </div>
-            `).join('')}
-          </div>
-          <div style="flex: 1;">
-            ${rightCol.map((emp, i) => `
-              <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid #e5e7eb;">
-                <span style="font-weight: 900; width: 40px; color: #059669; font-size: 14px;">${mid + i + 1}º</span>
-                <span style="font-weight: 700; text-transform: uppercase; font-size: 12px; color: #111827;">${emp.name}</span>
-              </div>
-            `).join('')}
-          </div>
-        </div>
-      </div>
-    `;
+    container.innerHTML = generatePdfHtml(item);
 
     document.body.appendChild(container);
 
@@ -1458,8 +1519,7 @@ const AdminPanel = ({
     };
 
     try {
-      addNotification('Gerando PDF...', 'info');
-      // Ensure element is in DOM and styles are applied
+      addNotification('Gerando PDF formatado...', 'info');
       await new Promise(resolve => setTimeout(resolve, 500));
       
       await html2pdf().set(opt).from(container).save();
@@ -1469,7 +1529,6 @@ const AdminPanel = ({
       console.error('Erro ao gerar PDF:', err);
       addNotification('Erro ao gerar PDF.', 'error');
     } finally {
-      // Small delay before cleanup to be safe
       setTimeout(() => {
         if (container.parentNode) {
           document.body.removeChild(container);
@@ -1481,12 +1540,6 @@ const AdminPanel = ({
   const handleShareHistory = async (item: LotteryHistory) => {
     const dateStr = new Date(item.timestamp).toLocaleDateString('pt-BR');
     const timeStr = new Date(item.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-    
-    // Generate PDF content (similar to handleDownloadPDF)
-    const list = item.fullList || [];
-    const mid = Math.ceil(list.length / 2);
-    const leftCol = list.slice(0, mid);
-    const rightCol = list.slice(mid);
 
     const container = document.createElement('div');
     container.style.position = 'absolute';
@@ -1497,32 +1550,7 @@ const AdminPanel = ({
     container.style.width = '210mm';
     container.style.background = 'white';
     
-    container.innerHTML = `
-      <div style="padding: 40px; font-family: Arial, sans-serif; color: #1a1a1a;">
-        <div style="text-align: center; margin-bottom: 40px; border-bottom: 4px solid #059669; padding-bottom: 25px;">
-          <h1 style="font-size: 28px; font-weight: 900; text-transform: uppercase; color: #059669; margin-bottom: 8px;">FILA DO ALMOÇO EDIFÍCIO AMAZONAS</h1>
-          <p style="font-size: 16px; color: #4b5563; font-weight: 700; text-transform: uppercase;">DATA: ${dateStr} - ${timeStr}</p>
-        </div>
-        <div style="display: flex; gap: 60px;">
-          <div style="flex: 1;">
-            ${leftCol.map((emp, i) => `
-              <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid #e5e7eb;">
-                <span style="font-weight: 900; width: 40px; color: #059669; font-size: 14px;">${i + 1}º</span>
-                <span style="font-weight: 700; text-transform: uppercase; font-size: 12px; color: #111827;">${emp.name}</span>
-              </div>
-            `).join('')}
-          </div>
-          <div style="flex: 1;">
-            ${rightCol.map((emp, i) => `
-              <div style="display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid #e5e7eb;">
-                <span style="font-weight: 900; width: 40px; color: #059669; font-size: 14px;">${mid + i + 1}º</span>
-                <span style="font-weight: 700; text-transform: uppercase; font-size: 12px; color: #111827;">${emp.name}</span>
-              </div>
-            `).join('')}
-          </div>
-        </div>
-      </div>
-    `;
+    container.innerHTML = generatePdfHtml(item);
 
     document.body.appendChild(container);
 
@@ -4230,7 +4258,7 @@ function AppContent() {
   const isFirstCallRef = useRef(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [currentUserRole, setCurrentUserRole] = useState<'admin' | 'coordinator' | null>(null);
-  const [publicTab, setPublicTab] = useState<'current' | 'history'>('current');
+  const [publicTab, setPublicTab] = useState<'current' | 'history' | null>(null);
   const [selectedLotteryForList, setSelectedLotteryForList] = useState<LotteryHistory | null>(null);
   const [showHelpModal, setShowHelpModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -4682,6 +4710,37 @@ function AppContent() {
       clearTimeout(timeout);
     };
   }, [view, admins, isLoadingAdmins]);
+
+  // React Query in-memory cache for Queue & History
+  useQuery({
+    queryKey: ['queue-cache'],
+    queryFn: async () => {
+      const q = query(collection(db, 'queue'), orderBy('position', 'asc'));
+      const snapshot = await getDocs(q);
+      const items = snapshot.docs.map(doc => {
+        const data = doc.data() as Employee;
+        return {
+          ...data,
+          position: Number(data.position) || 0
+        };
+      });
+      setQueue(items);
+      return items;
+    },
+    staleTime: 60000,
+  });
+
+  useQuery({
+    queryKey: ['history-cache'],
+    queryFn: async () => {
+      const q = query(collection(db, 'history'), orderBy('timestamp', 'desc'));
+      const snapshot = await getDocs(q);
+      const items = snapshot.docs.map(doc => doc.data() as LotteryHistory);
+      setHistory(items);
+      return items;
+    },
+    staleTime: 60000,
+  });
 
   // Firestore Real-time Sync: Queue
   useEffect(() => {

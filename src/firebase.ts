@@ -1,3 +1,4 @@
+// criador por Sergio belo
 import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 

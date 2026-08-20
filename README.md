@@ -1,3 +1,4 @@
+<!-- criador por Sergio belo -->
 # Edifício Amazonas - Gourmet Queue
 
 Uma aplicação elegante e funcional para gerenciamento de filas de serviço, inspirada na natureza e otimizada para uma experiência gourmet.
