@@ -5664,27 +5664,7 @@ function AppContent() {
                   />
                 )}
                 
-                {history.length > 0 && (
-                  <motion.div 
-                    initial={{ opacity: 0, y: -10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="flex justify-center"
-                  >
-                    <button 
-                      onClick={() => setSelectedLotteryForList(history[0])}
-                      className="flex items-center gap-3 px-6 py-3 bg-white/5 hover:bg-white/10 active:scale-95 rounded-[32px] border border-white/5 transition-all group backdrop-blur-sm shadow-xl"
-                    >
-                      <Trophy size={16} className="text-brand-secondary animate-pulse" />
-                      <div className="text-left">
-                        <span className="text-[9px] font-black uppercase tracking-[0.2em] text-brand-secondary block leading-none mb-1">Copa Último Sorteio</span>
-                        <span className="text-xs font-bold text-white/70 block leading-none">Ver resultado completo do bolão</span>
-                      </div>
-                      <div className="w-8 h-8 rounded-full bg-brand-secondary/10 flex items-center justify-center ml-2 group-hover:bg-brand-secondary/20 transition-colors">
-                        <ChevronRight size={16} className="text-brand-secondary group-hover:translate-x-0.5 transition-transform" />
-                      </div>
-                    </button>
-                  </motion.div>
-                )}
+
               </div>
 
               <div className="px-4 md:px-0">
