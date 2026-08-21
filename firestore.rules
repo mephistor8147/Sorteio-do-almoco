@@ -126,6 +126,11 @@ service cloud.firestore {
       allow create, delete: if isAtLeastCoordinator() && isValidId(historyId);
     }
 
+    match /call_logs/{callLogId} {
+      allow get, list: if true;
+      allow create, update, delete: if isAtLeastCoordinator() && isValidId(callLogId);
+    }
+
     match /admins/{adminEmail} {
       allow get: if isAuthenticated();
       allow list: if isAtLeastCoordinator();

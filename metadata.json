@@ -1,5 +1,6 @@
 {
   "name": "Remix: Edifício Amazonas - Gourmet Queue",
-  "description": "Uma experiência gastronômica única com gerenciamento de fila elegante e tropical.",
-  "requestFramePermissions": ["camera"]
+  "description": "Uma experiência gastronômica única com gerenciamento de fila elegante, chamada sonora com seleção de vozes masculinas/femininas e dashboard de produtividade.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

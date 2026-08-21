@@ -54,12 +54,21 @@ import {
   Archive,
   Code,
   Calendar,
-  Save
+  Save,
+  BarChart3,
+  TrendingUp,
+  Mic,
+  Sliders,
+  Play,
+  Bell,
+  Music,
+  Radio
 } from 'lucide-react';
 import html2pdf from 'html2pdf.js';
 import * as XLSX from 'xlsx';
 import confetti from 'canvas-confetti';
 import { useQuery } from '@tanstack/react-query';
+import { AdminDashboard, CallLogItem } from './components/AdminDashboard';
 import {  
   auth,
   db, 
@@ -127,12 +136,325 @@ interface AppSettings {
   endOfRoundPosition?: number;
   currentCallPosition?: number;
   voiceCallEnabled?: boolean;
+  voiceGender?: 'female' | 'male' | 'system';
+  voiceURI?: string;
+  voiceRate?: number;
+  voicePitch?: number;
+  alertSoundEffect?: AlertSoundType;
+  alertSoundVolume?: number;
   lastCalledEmployeeId?: string | null;
   lastCalledTimestamp?: string | null;
   publicShuffleEnabled?: boolean;
   publicShuffleStartTime?: string;
   publicShuffleEndTime?: string;
 }
+
+export type AlertSoundType = 'chime' | 'airport' | 'beep' | 'marimba' | 'bell' | 'subtle' | 'none';
+
+export interface AlertSoundOption {
+  id: AlertSoundType;
+  name: string;
+  category: string;
+  description: string;
+  emoji: string;
+  durationMs: number;
+}
+
+export const ALERT_SOUND_OPTIONS: AlertSoundOption[] = [
+  {
+    id: 'chime',
+    name: 'Sino Gourmet (Ding-Dong)',
+    category: 'Harmônico',
+    description: 'Dois tons suaves e elegantes (Fá ➔ Dó). Recomendado para restaurantes e buffets.',
+    emoji: '🔔',
+    durationMs: 700,
+  },
+  {
+    id: 'airport',
+    name: 'Chamada Executiva (Aeroporto)',
+    category: 'Aviso',
+    description: 'Tríade ascendente cristalina (Dó ➔ Mi ➔ Sol) com alta definição de aviso.',
+    emoji: '✈️',
+    durationMs: 750,
+  },
+  {
+    id: 'beep',
+    name: 'Bip Digital Duplo',
+    category: 'Moderno',
+    description: 'Dois pulsos eletrônicos rápidos e modernos com forte destaque em ambientes movimentados.',
+    emoji: '⚡',
+    durationMs: 380,
+  },
+  {
+    id: 'marimba',
+    name: 'Marimba Tropical (Acústico)',
+    category: 'Orgânico',
+    description: 'Notas percussivas amadeiradas e aconchegantes inspiradas na identidade amazônica.',
+    emoji: '🌴',
+    durationMs: 650,
+  },
+  {
+    id: 'bell',
+    name: 'Gongo Ressonante',
+    category: 'Clássico',
+    description: 'Tom metálico aveludado com ressonância acústica prolongada e encorpada.',
+    emoji: '🛎️',
+    durationMs: 800,
+  },
+  {
+    id: 'subtle',
+    name: 'Alerta Suave (Gota)',
+    category: 'Discreto',
+    description: 'Pulso delicado e arredondado que capta a atenção sem sobressaltos.',
+    emoji: '💧',
+    durationMs: 450,
+  },
+  {
+    id: 'none',
+    name: 'Sem Efeito (Silencioso)',
+    category: 'Voz Direta',
+    description: 'Inicia a fala imediatamente sem tocar nenhum sinal sonoro prévio.',
+    emoji: '🚫',
+    durationMs: 0,
+  },
+];
+
+let sharedAudioCtx: AudioContext | null = null;
+
+export const getSharedAudioContext = (): AudioContext | null => {
+  if (typeof window === 'undefined') return null;
+  const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+  if (!AudioContextClass) return null;
+  if (!sharedAudioCtx || sharedAudioCtx.state === 'closed') {
+    sharedAudioCtx = new AudioContextClass();
+  }
+  if (sharedAudioCtx.state === 'suspended') {
+    sharedAudioCtx.resume().catch(() => {});
+  }
+  return sharedAudioCtx;
+};
+
+// Sintetizador Web Audio API de alta fidelidade para efeitos sonoros de chamada
+export const playAlertSound = (
+  effect: AlertSoundType = 'chime',
+  volumeFactor: number = 0.8
+): Promise<void> => {
+  return new Promise((resolve) => {
+    if (effect === 'none') {
+      resolve();
+      return;
+    }
+
+    const ctx = getSharedAudioContext();
+    if (!ctx) {
+      resolve();
+      return;
+    }
+
+    try {
+      const now = ctx.currentTime;
+      const masterGain = ctx.createGain();
+      const vol = Math.max(0.05, Math.min(1.0, volumeFactor));
+      masterGain.gain.setValueAtTime(vol, now);
+      masterGain.connect(ctx.destination);
+
+      if (effect === 'chime') {
+        // Sino Harmônico F5 (698.46Hz) -> C6 (1046.5Hz)
+        const osc1 = ctx.createOscillator();
+        const gain1 = ctx.createGain();
+        osc1.type = 'sine';
+        osc1.frequency.setValueAtTime(698.46, now);
+        gain1.gain.setValueAtTime(0.001, now);
+        gain1.gain.exponentialRampToValueAtTime(0.45, now + 0.025);
+        gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
+        osc1.connect(gain1);
+        gain1.connect(masterGain);
+        osc1.start(now);
+        osc1.stop(now + 0.4);
+
+        const osc2 = ctx.createOscillator();
+        const gain2 = ctx.createGain();
+        osc2.type = 'sine';
+        osc2.frequency.setValueAtTime(1046.5, now + 0.16);
+        gain2.gain.setValueAtTime(0.001, now + 0.16);
+        gain2.gain.exponentialRampToValueAtTime(0.55, now + 0.2);
+        gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.72);
+        osc2.connect(gain2);
+        gain2.connect(masterGain);
+        osc2.start(now + 0.16);
+        osc2.stop(now + 0.75);
+
+        setTimeout(resolve, 580);
+      } else if (effect === 'airport') {
+        // Tríade C5 (523.25) -> E5 (659.25) -> G5 (783.99)
+        const notes = [
+          { freq: 523.25, time: 0, dur: 0.22, vol: 0.4 },
+          { freq: 659.25, time: 0.16, dur: 0.22, vol: 0.45 },
+          { freq: 783.99, time: 0.32, dur: 0.45, vol: 0.55 },
+        ];
+        notes.forEach(({ freq, time, dur, vol: noteVol }) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(freq, now + time);
+          gain.gain.setValueAtTime(0.001, now + time);
+          gain.gain.exponentialRampToValueAtTime(noteVol, now + time + 0.02);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + time + dur);
+          osc.connect(gain);
+          gain.connect(masterGain);
+          osc.start(now + time);
+          osc.stop(now + time + dur + 0.02);
+        });
+        setTimeout(resolve, 680);
+      } else if (effect === 'beep') {
+        // Bip Duplo 880Hz / 1174.66Hz
+        const beeps = [
+          { freq: 880, time: 0, dur: 0.07, vol: 0.4 },
+          { freq: 1174.66, time: 0.1, dur: 0.14, vol: 0.5 },
+        ];
+        beeps.forEach(({ freq, time, dur, vol: bVol }) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(freq, now + time);
+          gain.gain.setValueAtTime(0.001, now + time);
+          gain.gain.exponentialRampToValueAtTime(bVol, now + time + 0.01);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + time + dur);
+          osc.connect(gain);
+          gain.connect(masterGain);
+          osc.start(now + time);
+          osc.stop(now + time + dur + 0.01);
+        });
+        setTimeout(resolve, 320);
+      } else if (effect === 'marimba') {
+        // Marimba C5 (523.25), G5 (783.99), C6 (1046.5)
+        const strikes = [
+          { freq: 523.25, time: 0, dur: 0.16 },
+          { freq: 783.99, time: 0.12, dur: 0.2 },
+          { freq: 1046.5, time: 0.24, dur: 0.38 },
+        ];
+        strikes.forEach(({ freq, time, dur }) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(freq, now + time);
+          gain.gain.setValueAtTime(0.001, now + time);
+          gain.gain.exponentialRampToValueAtTime(0.55, now + time + 0.01);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + time + dur);
+          osc.connect(gain);
+          gain.connect(masterGain);
+          osc.start(now + time);
+          osc.stop(now + time + dur + 0.02);
+        });
+        setTimeout(resolve, 520);
+      } else if (effect === 'bell') {
+        // Gongo Ressonante D5 587.33Hz + overtones
+        const harmonics = [
+          { f: 587.33, amp: 0.5, decay: 0.85 },
+          { f: 1174.66, amp: 0.22, decay: 0.55 },
+          { f: 1761.99, amp: 0.12, decay: 0.35 },
+        ];
+        harmonics.forEach(({ f, amp, decay }) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(f, now);
+          gain.gain.setValueAtTime(0.001, now);
+          gain.gain.exponentialRampToValueAtTime(amp, now + 0.02);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + decay);
+          osc.connect(gain);
+          gain.connect(masterGain);
+          osc.start(now);
+          osc.stop(now + decay + 0.02);
+        });
+        setTimeout(resolve, 720);
+      } else if (effect === 'subtle') {
+        // Gota Suave pitch bend
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(440, now);
+        osc.frequency.exponentialRampToValueAtTime(659.25, now + 0.14);
+        gain.gain.setValueAtTime(0.001, now);
+        gain.gain.exponentialRampToValueAtTime(0.4, now + 0.03);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.42);
+        osc.connect(gain);
+        gain.connect(masterGain);
+        osc.start(now);
+        osc.stop(now + 0.45);
+        setTimeout(resolve, 380);
+      } else {
+        resolve();
+      }
+    } catch (err) {
+      console.warn('Erro ao reproduzir efeito sonoro:', err);
+      resolve();
+    }
+  });
+};
+
+// Helper para detecção de gênero e classificação de vozes do navegador
+export const getVoiceGender = (voice: SpeechSynthesisVoice): 'female' | 'male' | 'unknown' => {
+  const name = (voice.name + ' ' + (voice.voiceURI || '')).toLowerCase();
+  
+  if (
+    name.includes('female') || 
+    name.includes('mulher') || 
+    name.includes('feminina') ||
+    name.includes('maria') ||
+    name.includes('luciana') ||
+    name.includes('francisca') ||
+    name.includes('yelda') ||
+    name.includes('helena') ||
+    name.includes('vitória') ||
+    name.includes('vitoria') ||
+    name.includes('leticia') ||
+    name.includes('letícia') ||
+    name.includes('fernanda') ||
+    name.includes('camila') ||
+    name.includes('raquel') ||
+    name.includes('alice') ||
+    name.includes('joana') ||
+    name.includes('zira') ||
+    name.includes('wavenet-a') ||
+    name.includes('wavenet-c') ||
+    name.includes('wavenet-e') ||
+    name.includes('wavenet-f') ||
+    name.includes('standard-a') ||
+    name.includes('standard-c') ||
+    (name.includes('google') && name.includes('português') && !name.includes('male'))
+  ) {
+    return 'female';
+  }
+
+  if (
+    name.includes('male') || 
+    name.includes('homem') || 
+    name.includes('masculino') ||
+    name.includes('daniel') ||
+    name.includes('antonio') ||
+    name.includes('antônio') ||
+    name.includes('felipe') ||
+    name.includes('ricardo') ||
+    name.includes('jorge') ||
+    name.includes('david') ||
+    name.includes('george') ||
+    name.includes('diego') ||
+    name.includes('thiago') ||
+    name.includes('tiago') ||
+    name.includes('lucas') ||
+    name.includes('pedro') ||
+    name.includes('gabriel') ||
+    name.includes('wavenet-b') ||
+    name.includes('wavenet-d') ||
+    name.includes('standard-b') ||
+    name.includes('standard-d')
+  ) {
+    return 'male';
+  }
+
+  return 'unknown';
+};
 
 interface LotteryHistory {
   id: string;
@@ -190,6 +512,12 @@ const DEFAULT_SETTINGS: AppSettings = {
   downloadFileName: '',
   currentCallPosition: 1,
   voiceCallEnabled: false,
+  voiceGender: 'female',
+  voiceURI: '',
+  voiceRate: 0.9,
+  voicePitch: 1.0,
+  alertSoundEffect: 'chime',
+  alertSoundVolume: 0.8,
   lastCalledEmployeeId: null,
   lastCalledTimestamp: null,
   publicShuffleEnabled: false,
@@ -1163,7 +1491,8 @@ const AdminPanel = ({
   setCurrentHistoryPage,
   ITEMS_PER_PAGE,
   speak,
-  onHelpClick
+  onHelpClick,
+  callLogs = []
 }: { 
   onLogout: () => void, 
   queue: Employee[], 
@@ -1202,7 +1531,8 @@ const AdminPanel = ({
   setCurrentHistoryPage: React.Dispatch<React.SetStateAction<number>>,
   ITEMS_PER_PAGE: number,
   speak: (text: string, force?: boolean) => void,
-  onHelpClick: () => void
+  onHelpClick: () => void,
+  callLogs?: CallLogItem[]
 }) => {
   const [newName, setNewName] = useState('');
   const [newPhotoUrl, setNewPhotoUrl] = useState('');
@@ -1260,12 +1590,39 @@ const AdminPanel = ({
       // Encontramos quem vem DEPOIS do personToCall para definir a nova posição
       const nextOne = activeQueueSorted.find(e => e.position > personToCall.position);
       
+      const nowIso = new Date().toISOString();
+      let timeSinceLastCallSeconds: number | null = null;
+      if (settings.lastCalledTimestamp) {
+        const lastTime = new Date(settings.lastCalledTimestamp).getTime();
+        const diffSec = Math.max(1, Math.round((Date.now() - lastTime) / 1000));
+        if (diffSec < 14400) { // dentro de 4h
+          timeSinceLastCallSeconds = diffSec;
+        }
+      }
+
       await onUpdateSettings({
         ...settings,
         currentCallPosition: nextOne ? nextOne.position : personToCall.position + 1,
         lastCalledEmployeeId: personToCall.id,
-        lastCalledTimestamp: new Date().toISOString()
+        lastCalledTimestamp: nowIso
       });
+
+      // Registrar métrica de produtividade no Firestore (call_logs)
+      try {
+        const callLogRef = doc(collection(db, 'call_logs'));
+        await setDoc(callLogRef, {
+          id: callLogRef.id,
+          timestamp: nowIso,
+          employeeId: personToCall.id,
+          employeeName: personToCall.name,
+          position: personToCall.position,
+          timeSinceLastCallSeconds: timeSinceLastCallSeconds,
+          callerRole: currentUserRole || 'coordinator',
+          callerName: currentAdminName || 'Coordenador'
+        });
+      } catch (logErr) {
+        console.warn('Erro ao salvar log de chamada:', logErr);
+      }
 
       addNotification(`${personToCall.name} chamado com sucesso!`, 'success');
     } catch (err) {
@@ -1649,7 +2006,7 @@ const AdminPanel = ({
     }
   };
 
-  const [activeTab, setActiveTab] = useState<'queue' | 'employees' | 'settings' | 'lottery' | 'database' | 'history' | 'admins' | 'files'>('queue');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'queue' | 'employees' | 'settings' | 'lottery' | 'database' | 'history' | 'admins' | 'files'>('dashboard');
   const [linkUrl, setLinkUrl] = useState('');
   const [linkName, setLinkName] = useState('');
 
@@ -1826,6 +2183,146 @@ const AdminPanel = ({
 
   const [expandedHistory, setExpandedHistory] = useState<string | null>(null);
   const [tempSettings, setTempSettings] = useState<AppSettings>(settings);
+  const [systemVoices, setSystemVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [isPlayingVoicePreview, setIsPlayingVoicePreview] = useState(false);
+  const [playingAlertSoundId, setPlayingAlertSoundId] = useState<AlertSoundType | null>(null);
+
+  // Prévia isolada do efeito sonoro
+  const handlePreviewAlertSound = (
+    soundEffect: AlertSoundType = tempSettings.alertSoundEffect || 'chime',
+    volume: number = tempSettings.alertSoundVolume !== undefined ? tempSettings.alertSoundVolume : 0.8
+  ) => {
+    if (soundEffect === 'none') {
+      addNotification('Opção silenciosa selecionada (nenhum efeito prévio).', 'info');
+      return;
+    }
+    setPlayingAlertSoundId(soundEffect);
+    playAlertSound(soundEffect, volume).finally(() => {
+      setTimeout(() => setPlayingAlertSoundId(null), 300);
+    });
+  };
+
+  // Prévia completa (Efeito Sonoro + Voz)
+  const handlePreviewFullCall = (
+    soundEffect: AlertSoundType = tempSettings.alertSoundEffect || 'chime',
+    volume: number = tempSettings.alertSoundVolume !== undefined ? tempSettings.alertSoundVolume : 0.8,
+    previewGender: 'female' | 'male' | 'system' = tempSettings.voiceGender || 'female',
+    previewURI?: string,
+    previewRate?: number,
+    previewPitch?: number
+  ) => {
+    setPlayingAlertSoundId(soundEffect);
+    setIsPlayingVoicePreview(true);
+
+    playAlertSound(soundEffect, volume).then(() => {
+      setPlayingAlertSoundId(null);
+      handlePreviewVoice(previewGender, previewURI, previewRate, previewPitch);
+    }).catch(() => {
+      setPlayingAlertSoundId(null);
+      handlePreviewVoice(previewGender, previewURI, previewRate, previewPitch);
+    });
+  };
+
+  // Carregar e sincronizar vozes disponíveis no navegador do administrador
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      const loadSystemVoices = () => {
+        const voices = window.speechSynthesis.getVoices();
+        setSystemVoices(voices);
+      };
+      loadSystemVoices();
+      if (window.speechSynthesis.onvoiceschanged !== undefined) {
+        window.speechSynthesis.onvoiceschanged = loadSystemVoices;
+      }
+    }
+  }, []);
+
+  const handlePreviewVoice = (
+    previewGender: 'female' | 'male' | 'system' = tempSettings.voiceGender || 'female',
+    previewURI?: string,
+    previewRate?: number,
+    previewPitch?: number,
+    customText?: string
+  ) => {
+    if (typeof window === 'undefined' || !window.speechSynthesis) {
+      addNotification('Síntese de voz não suportada neste navegador.', 'error');
+      return;
+    }
+
+    try {
+      window.speechSynthesis.cancel();
+      setIsPlayingVoicePreview(true);
+
+      const targetURI = previewURI !== undefined ? previewURI : tempSettings.voiceURI;
+      const targetRate = previewRate !== undefined ? previewRate : (tempSettings.voiceRate || 0.9);
+      let targetPitch = previewPitch !== undefined ? previewPitch : (tempSettings.voicePitch || 1.0);
+
+      if (previewGender === 'male' && (previewPitch === undefined || previewPitch === 1.0)) {
+        targetPitch = 0.85;
+      } else if (previewGender === 'female' && (previewPitch === undefined || previewPitch === 1.0)) {
+        targetPitch = 1.1;
+      }
+
+      const phrase = customText || (
+        previewGender === 'male' 
+          ? 'Atenção: Carlos Eduardo, por favor dirija-se ao buffet do Edifício Amazonas.'
+          : 'Atenção: Maria Aparecida, por favor dirija-se ao buffet do Edifício Amazonas.'
+      );
+
+      const utterance = new SpeechSynthesisUtterance(phrase);
+      utterance.lang = 'pt-BR';
+      utterance.rate = Math.max(0.6, Math.min(1.5, targetRate));
+      utterance.pitch = Math.max(0.5, Math.min(1.6, targetPitch));
+      utterance.volume = 1;
+
+      const currentVoices = window.speechSynthesis.getVoices();
+      const ptBRVoices = currentVoices.filter(v => 
+        v.lang.toLowerCase().includes('pt-br') || 
+        v.lang.toLowerCase().startsWith('pt')
+      );
+
+      let chosenVoice: SpeechSynthesisVoice | undefined;
+
+      if (targetURI) {
+        chosenVoice = currentVoices.find(v => v.voiceURI === targetURI || v.name === targetURI);
+      }
+
+      if (!chosenVoice) {
+        if (previewGender === 'male') {
+          chosenVoice = 
+            ptBRVoices.find(v => getVoiceGender(v) === 'male') ||
+            currentVoices.find(v => getVoiceGender(v) === 'male' && v.lang.toLowerCase().startsWith('pt')) ||
+            ptBRVoices.find(v => v.name.toLowerCase().includes('daniel') || v.name.toLowerCase().includes('felipe') || v.name.toLowerCase().includes('antonio')) ||
+            currentVoices.find(v => getVoiceGender(v) === 'male');
+        } else if (previewGender === 'female') {
+          chosenVoice = 
+            ptBRVoices.find(v => getVoiceGender(v) === 'female') ||
+            ptBRVoices.find(v => v.name.toLowerCase().includes('google') && v.name.toLowerCase().includes('português')) ||
+            ptBRVoices.find(v => v.name.toLowerCase().includes('maria') || v.name.toLowerCase().includes('luciana') || v.name.toLowerCase().includes('francisca') || v.name.toLowerCase().includes('helena')) ||
+            currentVoices.find(v => getVoiceGender(v) === 'female');
+        }
+      }
+
+      if (!chosenVoice) {
+        chosenVoice = 
+          ptBRVoices.find(v => v.name.toLowerCase().includes('google') && v.name.toLowerCase().includes('português')) ||
+          ptBRVoices[0] || 
+          currentVoices[0];
+      }
+
+      if (chosenVoice) {
+        utterance.voice = chosenVoice;
+      }
+
+      utterance.onend = () => setIsPlayingVoicePreview(false);
+      utterance.onerror = () => setIsPlayingVoicePreview(false);
+
+      window.speechSynthesis.speak(utterance);
+    } catch (err) {
+      console.error('Erro na prévia de voz:', err);
+      setIsPlayingVoicePreview(false);
+    }
+  };
   
   // Sync tempSettings with settings prop when it changes
   useEffect(() => {
@@ -1839,10 +2336,6 @@ const AdminPanel = ({
       return () => clearTimeout(timer);
     }
   }, [dbStatus]);
-
-  useEffect(() => {
-    setTempSettings(settings);
-  }, [settings]);
 
   const handleExport = () => {
     try {
@@ -1974,6 +2467,7 @@ const AdminPanel = ({
         <div className="flex overflow-x-auto no-scrollbar gap-2 mb-8 p-1.5 bg-white/5 backdrop-blur-xl rounded-[24px] w-full border border-white/5">
           <div className="flex gap-1.5 min-w-max p-1">
             {[
+              { id: 'dashboard', label: 'Dashboard', icon: <BarChart3 size={16} /> },
               { id: 'queue', label: 'Fila', icon: <Users size={16} /> },
               ...(currentUserRole === 'admin' ? [
                 { id: 'employees', label: 'Funcionários', icon: <Users size={16} /> },
@@ -2013,6 +2507,17 @@ const AdminPanel = ({
             ))}
           </div>
         </div>
+
+        {activeTab === 'dashboard' && (
+          <AdminDashboard 
+            history={history}
+            callLogs={callLogs}
+            queueLength={queue.length}
+            currentCallPosition={settings.currentCallPosition || 1}
+            lastCalledTimestamp={settings.lastCalledTimestamp}
+            onRefresh={() => addNotification('Dashboard atualizado com sucesso!', 'info')}
+          />
+        )}
 
         {activeTab === 'queue' && (
           <AdminTabLoader isLoading={isLoadingQueue} skeleton={<SkeletonQueue />}>
@@ -3608,6 +4113,478 @@ const AdminPanel = ({
                     </div>
                   </div>
                 </div>
+
+                {/* Voice & Sound Settings Card */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between px-4">
+                    <div className="flex items-center gap-4">
+                      <div className="w-1.5 h-6 bg-purple-500 rounded-full shadow-[0_0_12px_rgba(168,85,247,0.8)]" />
+                      <h3 className="text-[12px] font-black uppercase tracking-[0.4em] text-white">Chamada Sonora & Voz do Sistema</h3>
+                    </div>
+                    <span className="text-[10px] font-black uppercase tracking-widest text-purple-300 bg-purple-500/10 border border-purple-500/20 px-3 py-1 rounded-full">
+                      {systemVoices.length} {systemVoices.length === 1 ? 'voz detectada' : 'vozes detectadas'}
+                    </span>
+                  </div>
+
+                  <div className="glass p-8 rounded-[48px] border border-white/10 space-y-8">
+                    {/* Toggle Chamada por Voz */}
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-6 bg-white/5 rounded-3xl border border-white/5">
+                      <div className="flex items-center gap-4">
+                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${
+                          tempSettings.voiceCallEnabled 
+                            ? 'bg-purple-500 text-white shadow-lg shadow-purple-500/30' 
+                            : 'bg-white/5 text-white/40'
+                        }`}>
+                          <Volume2 size={24} />
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-black uppercase tracking-tight text-white">Habilitar Chamada Sonora Automática</h4>
+                          <p className="text-white/40 text-[10px] font-bold">Toca o sinal de alerta e anuncia o nome do colaborador sorteado ou chamado na fila</p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setTempSettings({ ...tempSettings, voiceCallEnabled: !tempSettings.voiceCallEnabled })}
+                        className={`relative inline-flex h-8 w-14 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                          tempSettings.voiceCallEnabled ? 'bg-purple-500' : 'bg-white/10'
+                        }`}
+                      >
+                        <span
+                          className={`pointer-events-none inline-block h-7 w-7 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                            tempSettings.voiceCallEnabled ? 'translate-x-6' : 'translate-x-0'
+                          }`}
+                        />
+                      </button>
+                    </div>
+
+                    {/* SELETOR VISUAL DE EFEITOS SONOROS DE ALERTA (SINAL PRÉ-CHAMADA) */}
+                    <div className="space-y-4 pt-2">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-1">
+                        <div>
+                          <label className="text-[11px] font-black uppercase tracking-widest text-amber-400 flex items-center gap-2">
+                            <Bell size={15} className="text-amber-400" />
+                            Efeito Sonoro de Alerta (Sinal Pré-Chamada)
+                          </label>
+                          <p className="text-[10px] text-white/40 font-medium mt-0.5">
+                            Escolha o toque reproduzido instantes antes do anúncio por voz
+                          </p>
+                        </div>
+                        <span className="text-[9px] font-black uppercase tracking-widest text-amber-300 bg-amber-500/10 border border-amber-500/20 px-3 py-1 rounded-full self-start sm:self-auto">
+                          7 Efeitos Disponíveis
+                        </span>
+                      </div>
+
+                      {/* Grid de Efeitos Sonoros */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                        {ALERT_SOUND_OPTIONS.map((soundOpt) => {
+                          const isSelected = (tempSettings.alertSoundEffect || 'chime') === soundOpt.id;
+                          const isPlayingThis = playingAlertSoundId === soundOpt.id;
+
+                          return (
+                            <div
+                              key={soundOpt.id}
+                              onClick={() => {
+                                setTempSettings({
+                                  ...tempSettings,
+                                  alertSoundEffect: soundOpt.id,
+                                });
+                                handlePreviewAlertSound(soundOpt.id, tempSettings.alertSoundVolume !== undefined ? tempSettings.alertSoundVolume : 0.8);
+                              }}
+                              className={`p-4 rounded-3xl border text-left transition-all relative overflow-hidden group cursor-pointer flex flex-col justify-between ${
+                                isSelected
+                                  ? 'bg-amber-500/15 border-amber-500/60 shadow-xl shadow-amber-500/10 ring-1 ring-amber-500/30'
+                                  : 'bg-white/5 border-white/5 hover:bg-white/10 hover:border-white/15'
+                              }`}
+                            >
+                              <div>
+                                <div className="flex items-center justify-between mb-2.5">
+                                  <div className="flex items-center gap-2.5">
+                                    <div className={`w-9 h-9 rounded-2xl flex items-center justify-center text-base transition-all ${
+                                      isSelected
+                                        ? 'bg-amber-500/30 text-amber-300'
+                                        : 'bg-white/10 text-white/70 group-hover:bg-white/15'
+                                    }`}>
+                                      {soundOpt.emoji}
+                                    </div>
+                                    <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md ${
+                                      isSelected
+                                        ? 'bg-amber-400/20 text-amber-300'
+                                        : 'bg-white/5 text-white/40'
+                                    }`}>
+                                      {soundOpt.category}
+                                    </span>
+                                  </div>
+
+                                  {isSelected && (
+                                    <span className="w-5 h-5 rounded-full bg-amber-500 text-black font-black flex items-center justify-center text-[10px]">
+                                      <Check size={12} strokeWidth={3} />
+                                    </span>
+                                  )}
+                                </div>
+
+                                <h5 className={`text-xs font-black uppercase tracking-tight leading-snug ${
+                                  isSelected ? 'text-amber-200' : 'text-white'
+                                }`}>
+                                  {soundOpt.name}
+                                </h5>
+
+                                <p className="text-[9.5px] text-white/40 font-medium mt-1 leading-relaxed">
+                                  {soundOpt.description}
+                                </p>
+                              </div>
+
+                              {/* Botão de Testar Toque no Card */}
+                              {soundOpt.id !== 'none' && (
+                                <div className="mt-3 pt-2.5 border-t border-white/5 flex items-center justify-between">
+                                  <span className="text-[8.5px] font-bold text-white/30 tracking-wider">
+                                    {soundOpt.durationMs}ms
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handlePreviewAlertSound(soundOpt.id, tempSettings.alertSoundVolume !== undefined ? tempSettings.alertSoundVolume : 0.8);
+                                    }}
+                                    className={`px-3 py-1 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 ${
+                                      isPlayingThis
+                                        ? 'bg-amber-500 text-black font-black scale-105'
+                                        : isSelected
+                                        ? 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30'
+                                        : 'bg-white/5 hover:bg-white/10 text-white/60 hover:text-white border border-white/5'
+                                    }`}
+                                  >
+                                    <Play size={10} className={isPlayingThis ? 'animate-spin' : ''} />
+                                    {isPlayingThis ? 'Tocando...' : 'Ouvir Sinal'}
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Controle de Volume do Efeito Sonoro */}
+                      <div className="p-4 bg-amber-500/5 border border-amber-500/15 rounded-3xl space-y-2 mt-4">
+                        <div className="flex items-center justify-between px-2">
+                          <label className="text-[10px] font-black uppercase tracking-widest text-amber-400 flex items-center gap-2">
+                            <Sliders size={12} className="text-amber-400" />
+                            Volume do Sinal de Alerta
+                          </label>
+                          <span className="text-xs font-black text-amber-400 bg-amber-500/10 px-2.5 py-0.5 rounded-lg">
+                            {Math.round((tempSettings.alertSoundVolume !== undefined ? tempSettings.alertSoundVolume : 0.8) * 100)}%
+                          </span>
+                        </div>
+                        <div className="px-2">
+                          <input
+                            type="range"
+                            min="0.1"
+                            max="1.0"
+                            step="0.05"
+                            value={tempSettings.alertSoundVolume !== undefined ? tempSettings.alertSoundVolume : 0.8}
+                            onChange={(e) => setTempSettings({ ...tempSettings, alertSoundVolume: parseFloat(e.target.value) })}
+                            className="w-full h-2 bg-white/10 rounded-lg appearance-none cursor-pointer accent-amber-500"
+                          />
+                          <div className="flex justify-between text-[8px] font-bold uppercase tracking-widest text-white/20 mt-1">
+                            <span>Mais Baixo (10%)</span>
+                            <span>Padrão Recomendado (80%)</span>
+                            <span>Máximo (100%)</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Seletor de Tipo / Gênero de Voz */}
+                    <div className="space-y-3 pt-4 border-t border-white/5">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-4 flex items-center gap-2">
+                        <Mic size={14} className="text-purple-400" />
+                        Gênero da Voz de Chamada
+                      </label>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {/* Opção Feminina */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTempSettings({
+                              ...tempSettings,
+                              voiceGender: 'female',
+                              voicePitch: 1.1,
+                            });
+                            handlePreviewVoice('female', tempSettings.voiceURI, tempSettings.voiceRate || 0.9, 1.1);
+                          }}
+                          className={`p-5 rounded-3xl border text-left transition-all relative overflow-hidden group ${
+                            (tempSettings.voiceGender || 'female') === 'female'
+                              ? 'bg-purple-500/15 border-purple-500/50 shadow-xl shadow-purple-500/10'
+                              : 'bg-white/5 border-white/5 hover:bg-white/10 hover:border-white/10'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="w-10 h-10 rounded-2xl bg-purple-500/20 text-purple-300 flex items-center justify-center text-lg">
+                              👩
+                            </div>
+                            {(tempSettings.voiceGender || 'female') === 'female' && (
+                              <span className="w-6 h-6 rounded-full bg-purple-500 text-white flex items-center justify-center text-xs">
+                                <Check size={14} />
+                              </span>
+                            )}
+                          </div>
+                          <h5 className="text-sm font-black uppercase tracking-tight text-white">Voz Feminina</h5>
+                          <p className="text-[10px] text-white/40 font-medium mt-1 leading-snug">
+                            Tom límpido, natural e acolhedor. Alta inteligibilidade no ambiente.
+                          </p>
+                        </button>
+
+                        {/* Opção Masculina */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTempSettings({
+                              ...tempSettings,
+                              voiceGender: 'male',
+                              voicePitch: 0.85,
+                            });
+                            handlePreviewVoice('male', tempSettings.voiceURI, tempSettings.voiceRate || 0.9, 0.85);
+                          }}
+                          className={`p-5 rounded-3xl border text-left transition-all relative overflow-hidden group ${
+                            tempSettings.voiceGender === 'male'
+                              ? 'bg-blue-500/15 border-blue-500/50 shadow-xl shadow-blue-500/10'
+                              : 'bg-white/5 border-white/5 hover:bg-white/10 hover:border-white/10'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="w-10 h-10 rounded-2xl bg-blue-500/20 text-blue-300 flex items-center justify-center text-lg">
+                              👨
+                            </div>
+                            {tempSettings.voiceGender === 'male' && (
+                              <span className="w-6 h-6 rounded-full bg-blue-500 text-white flex items-center justify-center text-xs">
+                                <Check size={14} />
+                              </span>
+                            )}
+                          </div>
+                          <h5 className="text-sm font-black uppercase tracking-tight text-white">Voz Masculina</h5>
+                          <p className="text-[10px] text-white/40 font-medium mt-1 leading-snug">
+                            Tom grave, firme e encorpado. Forte presença sonora em áreas amplas.
+                          </p>
+                        </button>
+
+                        {/* Opção Padrão do Sistema */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTempSettings({
+                              ...tempSettings,
+                              voiceGender: 'system',
+                              voicePitch: 1.0,
+                            });
+                            handlePreviewVoice('system', tempSettings.voiceURI, tempSettings.voiceRate || 0.9, 1.0);
+                          }}
+                          className={`p-5 rounded-3xl border text-left transition-all relative overflow-hidden group ${
+                            tempSettings.voiceGender === 'system'
+                              ? 'bg-emerald-500/15 border-emerald-500/50 shadow-xl shadow-emerald-500/10'
+                              : 'bg-white/5 border-white/5 hover:bg-white/10 hover:border-white/10'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 text-emerald-300 flex items-center justify-center text-lg">
+                              ⚙️
+                            </div>
+                            {tempSettings.voiceGender === 'system' && (
+                              <span className="w-6 h-6 rounded-full bg-emerald-500 text-white flex items-center justify-center text-xs">
+                                <Check size={14} />
+                              </span>
+                            )}
+                          </div>
+                          <h5 className="text-sm font-black uppercase tracking-tight text-white">Padrão do Sistema</h5>
+                          <p className="text-[10px] text-white/40 font-medium mt-1 leading-snug">
+                            Utiliza o sintetizador nativo padrão do navegador ou aparelho.
+                          </p>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Seletor Específico de Vozes Instaladas */}
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-4 flex items-center justify-between">
+                        <span>Voz Específica Instalada no Navegador / Sistema</span>
+                        <span className="text-[9px] text-white/30 lowercase">opcional</span>
+                      </label>
+                      <select
+                        value={tempSettings.voiceURI || ''}
+                        onChange={(e) => {
+                          const newURI = e.target.value;
+                          const chosen = systemVoices.find(v => v.voiceURI === newURI || v.name === newURI);
+                          let newGender = tempSettings.voiceGender;
+                          if (chosen) {
+                            const detected = getVoiceGender(chosen);
+                            if (detected === 'female' || detected === 'male') {
+                              newGender = detected;
+                            }
+                          }
+                          setTempSettings({
+                            ...tempSettings,
+                            voiceURI: newURI,
+                            voiceGender: newGender,
+                          });
+                          if (newURI) {
+                            handlePreviewVoice(newGender, newURI, tempSettings.voiceRate, tempSettings.voicePitch);
+                          }
+                        }}
+                        className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/30 transition-all font-bold"
+                      >
+                        <option value="" className="bg-[#121815] text-white">
+                          ✨ Seleção Inteligente por Gênero ({tempSettings.voiceGender === 'male' ? 'Masculina' : tempSettings.voiceGender === 'system' ? 'Padrão' : 'Feminina'})
+                        </option>
+                        
+                        {/* Vozes em Português */}
+                        {systemVoices.filter(v => v.lang.toLowerCase().includes('pt')).length > 0 && (
+                          <optgroup label="🇧🇷 Vozes em Português" className="bg-[#121815] text-purple-300 font-black">
+                            {systemVoices.filter(v => v.lang.toLowerCase().includes('pt')).map((v, i) => {
+                              const gender = getVoiceGender(v);
+                              const genderTag = gender === 'female' ? '👩 Feminina' : gender === 'male' ? '👨 Masculina' : '⚙️ Neutra';
+                              return (
+                                <option key={`pt-${v.voiceURI || v.name}-${i}`} value={v.voiceURI || v.name} className="bg-[#121815] text-white">
+                                  {v.name} ({v.lang}) — {genderTag}
+                                </option>
+                              );
+                            })}
+                          </optgroup>
+                        )}
+
+                        {/* Outras vozes do sistema */}
+                        {systemVoices.filter(v => !v.lang.toLowerCase().includes('pt')).length > 0 && (
+                          <optgroup label="🌐 Outras Vozes do Dispositivo" className="bg-[#121815] text-white/50 font-bold">
+                            {systemVoices.filter(v => !v.lang.toLowerCase().includes('pt')).slice(0, 20).map((v, i) => {
+                              const gender = getVoiceGender(v);
+                              const genderTag = gender === 'female' ? '👩' : gender === 'male' ? '👨' : '⚙️';
+                              return (
+                                <option key={`other-${v.voiceURI || v.name}-${i}`} value={v.voiceURI || v.name} className="bg-[#121815] text-white/80">
+                                  {v.name} ({v.lang}) {genderTag}
+                                </option>
+                              );
+                            })}
+                          </optgroup>
+                        )}
+                      </select>
+                    </div>
+
+                    {/* Sliders de Velocidade e Tom */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-white/5">
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between px-4">
+                          <label className="text-[10px] font-black uppercase tracking-widest text-white/40 flex items-center gap-2">
+                            <Sliders size={12} className="text-purple-400" />
+                            Velocidade da Fala
+                          </label>
+                          <span className="text-xs font-black text-purple-400 bg-purple-500/10 px-2.5 py-0.5 rounded-lg">
+                            {((tempSettings.voiceRate || 0.9)).toFixed(2)}x
+                          </span>
+                        </div>
+                        <div className="px-4">
+                          <input
+                            type="range"
+                            min="0.7"
+                            max="1.3"
+                            step="0.05"
+                            value={tempSettings.voiceRate || 0.9}
+                            onChange={(e) => setTempSettings({ ...tempSettings, voiceRate: parseFloat(e.target.value) })}
+                            className="w-full h-2 bg-white/10 rounded-lg appearance-none cursor-pointer accent-purple-500"
+                          />
+                          <div className="flex justify-between text-[8px] font-bold uppercase tracking-widest text-white/20 mt-1.5">
+                            <span>Mais Lenta</span>
+                            <span>Normal (0.90x)</span>
+                            <span>Mais Rápida</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between px-4">
+                          <label className="text-[10px] font-black uppercase tracking-widest text-white/40 flex items-center gap-2">
+                            <Sliders size={12} className="text-purple-400" />
+                            Tom / Timbre da Voz
+                          </label>
+                          <span className="text-xs font-black text-purple-400 bg-purple-500/10 px-2.5 py-0.5 rounded-lg">
+                            {((tempSettings.voicePitch || 1.0)).toFixed(2)}x
+                          </span>
+                        </div>
+                        <div className="px-4">
+                          <input
+                            type="range"
+                            min="0.6"
+                            max="1.4"
+                            step="0.05"
+                            value={tempSettings.voicePitch || 1.0}
+                            onChange={(e) => setTempSettings({ ...tempSettings, voicePitch: parseFloat(e.target.value) })}
+                            className="w-full h-2 bg-white/10 rounded-lg appearance-none cursor-pointer accent-purple-500"
+                          />
+                          <div className="flex justify-between text-[8px] font-bold uppercase tracking-widest text-white/20 mt-1.5">
+                            <span>Grave (Masculino)</span>
+                            <span>Neutro (1.00x)</span>
+                            <span>Agudo (Feminino)</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Barra de Demonstração Completa e Testes Rápidos */}
+                    <div className="p-6 bg-gradient-to-r from-purple-500/10 via-amber-500/10 to-brand-primary/10 border border-white/10 rounded-3xl space-y-4">
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                        <div>
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+                            <span className="text-[9px] font-black uppercase tracking-[0.2em] text-amber-400">Simulador de Chamada em Tempo Real</span>
+                          </div>
+                          <p className="text-xs text-white/90 font-bold">
+                            Teste a reprodução conjunta do sinal sonoro + chamada por voz configurada
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
+                          <button
+                            type="button"
+                            disabled={isPlayingVoicePreview || playingAlertSoundId !== null}
+                            onClick={() => handlePreviewFullCall(
+                              tempSettings.alertSoundEffect,
+                              tempSettings.alertSoundVolume,
+                              tempSettings.voiceGender,
+                              tempSettings.voiceURI,
+                              tempSettings.voiceRate,
+                              tempSettings.voicePitch
+                            )}
+                            className="flex-1 sm:flex-initial px-6 py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 disabled:opacity-50 text-black font-black uppercase tracking-widest text-[10px] rounded-2xl shadow-lg shadow-amber-500/25 flex items-center justify-center gap-2 transition-all hover:scale-105 active:scale-95 shrink-0"
+                          >
+                            <Play size={14} className={isPlayingVoicePreview || playingAlertSoundId !== null ? 'animate-spin' : ''} />
+                            {isPlayingVoicePreview || playingAlertSoundId !== null ? 'Reproduzindo Chamada...' : 'Simular Chamada Completa (Sinal + Voz)'}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-white/10">
+                        <span className="text-[9px] font-black uppercase tracking-widest text-white/40 mr-2">Testes Diretos:</span>
+                        <button
+                          type="button"
+                          onClick={() => handlePreviewAlertSound(tempSettings.alertSoundEffect, tempSettings.alertSoundVolume)}
+                          className="px-3.5 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5"
+                        >
+                          🔔 Testar Sinal Isolado
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handlePreviewVoice('female', tempSettings.voiceURI, tempSettings.voiceRate || 0.9, 1.1, 'Atenção: Maria Aparecida, por favor dirija-se ao buffet.')}
+                          className="px-3.5 py-1.5 rounded-xl bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/30 text-purple-300 text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5"
+                        >
+                          👩 Testar Voz Feminina
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handlePreviewVoice('male', tempSettings.voiceURI, tempSettings.voiceRate || 0.9, 0.85, 'Atenção: Carlos Eduardo, por favor dirija-se ao buffet.')}
+                          className="px-3.5 py-1.5 rounded-xl bg-blue-500/15 hover:bg-blue-500/25 border border-blue-500/30 text-blue-300 text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5"
+                        >
+                          👨 Testar Voz Masculina
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
 
               <div className="lg:col-span-4 space-y-6">
@@ -4265,6 +5242,7 @@ function AppContent() {
   const [notifications, setNotifications] = useState<{ id: string, message: string, type: 'success' | 'error' | 'info', description?: string }[]>([]);
   const [queue, setQueue] = useState<Employee[]>([]);
   const [history, setHistory] = useState<LotteryHistory[]>([]);
+  const [callLogs, setCallLogs] = useState<CallLogItem[]>([]);
   const [currentHistoryPage, setCurrentHistoryPage] = useState(1);
   const ITEMS_PER_PAGE = 10;
   const [fileHistory, setFileHistory] = useState<FileHistory[]>([]);
@@ -4438,8 +5416,19 @@ function AppContent() {
         setTimeout(() => {
           const utterance = new SpeechSynthesisUtterance(text);
           utterance.lang = 'pt-BR';
-          utterance.rate = 0.9;
-          utterance.pitch = 1;
+          
+          const configuredRate = settings.voiceRate !== undefined ? settings.voiceRate : 0.9;
+          let configuredPitch = settings.voicePitch !== undefined ? settings.voicePitch : 1.0;
+
+          // Ajuste de timbre inteligente por gênero
+          if (settings.voiceGender === 'male' && (settings.voicePitch === undefined || settings.voicePitch === 1.0)) {
+            configuredPitch = 0.85;
+          } else if (settings.voiceGender === 'female' && (settings.voicePitch === undefined || settings.voicePitch === 1.0)) {
+            configuredPitch = 1.1;
+          }
+
+          utterance.rate = Math.max(0.6, Math.min(1.5, configuredRate));
+          utterance.pitch = Math.max(0.5, Math.min(1.6, configuredPitch));
           utterance.volume = 1;
           
           const currentVoices = window.speechSynthesis.getVoices();
@@ -4448,12 +5437,39 @@ function AppContent() {
             v.lang.toLowerCase().startsWith('pt')
           );
           
-          // Fallback mais robusto para vozes
-          const selectedVoice = 
-            ptBRVoices.find(v => v.name.toLowerCase().includes('google') && v.name.toLowerCase().includes('português')) ||
-            ptBRVoices.find(v => v.name.toLowerCase().includes('female')) ||
-            ptBRVoices.find(v => v.lang.toLowerCase().includes('pt-br')) ||
-            ptBRVoices[0];
+          let selectedVoice: SpeechSynthesisVoice | undefined;
+
+          // 1. Prioridade: Voz específica selecionada
+          if (settings.voiceURI) {
+            selectedVoice = currentVoices.find(v => v.voiceURI === settings.voiceURI || v.name === settings.voiceURI);
+          }
+
+          // 2. Prioridade: Voz de acordo com o gênero configurado (Masculino / Feminino / Sistema)
+          if (!selectedVoice) {
+            if (settings.voiceGender === 'male') {
+              selectedVoice = 
+                ptBRVoices.find(v => getVoiceGender(v) === 'male') ||
+                currentVoices.find(v => getVoiceGender(v) === 'male' && v.lang.toLowerCase().startsWith('pt')) ||
+                ptBRVoices.find(v => v.name.toLowerCase().includes('daniel') || v.name.toLowerCase().includes('felipe') || v.name.toLowerCase().includes('antonio')) ||
+                currentVoices.find(v => getVoiceGender(v) === 'male');
+            } else if (settings.voiceGender === 'female') {
+              selectedVoice = 
+                ptBRVoices.find(v => getVoiceGender(v) === 'female') ||
+                ptBRVoices.find(v => v.name.toLowerCase().includes('google') && v.name.toLowerCase().includes('português')) ||
+                ptBRVoices.find(v => v.name.toLowerCase().includes('maria') || v.name.toLowerCase().includes('luciana') || v.name.toLowerCase().includes('francisca') || v.name.toLowerCase().includes('helena')) ||
+                currentVoices.find(v => getVoiceGender(v) === 'female');
+            }
+          }
+
+          // 3. Fallbacks graduais seguros
+          if (!selectedVoice) {
+            selectedVoice = 
+              ptBRVoices.find(v => v.name.toLowerCase().includes('google') && v.name.toLowerCase().includes('português')) ||
+              ptBRVoices.find(v => v.name.toLowerCase().includes('female')) ||
+              ptBRVoices.find(v => v.lang.toLowerCase().includes('pt-br')) ||
+              ptBRVoices[0] ||
+              currentVoices[0];
+          }
           
           if (selectedVoice) {
             utterance.voice = selectedVoice;
@@ -4478,7 +5494,7 @@ function AppContent() {
                const fallbackUtterance = new SpeechSynthesisUtterance(text);
                fallbackUtterance.lang = 'pt-BR';
                fallbackUtterance.rate = 0.9;
-               fallbackUtterance.pitch = 1;
+               fallbackUtterance.pitch = settings.voiceGender === 'male' ? 0.85 : 1.1;
                fallbackUtterance.volume = 1;
                fallbackUtterance.onerror = (e) => {
                  console.error('❌ Erro no fallback de voz padrão:', e.error);
@@ -4496,25 +5512,50 @@ function AppContent() {
           };
 
           window.speechSynthesis.speak(utterance);
-        }, 300); // Aumentado para 300ms para acomodar processadores de TV mais lentos
+        }, 250); // Acomodar transição pós-sinal sonoro e hardware de TV
+      };
+
+      const triggerFullAnnouncement = () => {
+        const soundEffect = settings.alertSoundEffect !== undefined ? settings.alertSoundEffect : 'chime';
+        const soundVolume = settings.alertSoundVolume !== undefined ? settings.alertSoundVolume : 0.8;
+
+        if (soundEffect === 'none') {
+          performSpeech();
+        } else {
+          playAlertSound(soundEffect, soundVolume).then(() => {
+            performSpeech();
+          }).catch(() => {
+            performSpeech();
+          });
+        }
       };
 
       const voices = window.speechSynthesis.getVoices();
       if (voices.length === 0) {
         // Se voicesChanged não disparar em 1s, tenta falar mesmo assim com a voz padrão
-        const timer = setTimeout(performSpeech, 1000);
+        const timer = setTimeout(triggerFullAnnouncement, 1000);
         window.speechSynthesis.onvoiceschanged = () => {
           clearTimeout(timer);
-          performSpeech();
+          triggerFullAnnouncement();
           window.speechSynthesis.onvoiceschanged = null;
         };
       } else {
-        performSpeech();
+        triggerFullAnnouncement();
       }
     } catch (err) {
       console.error('❌ Erro fatal:', err);
     }
-  }, [localVoiceEnabled, settings.voiceCallEnabled, hasInteracted]);
+  }, [
+    localVoiceEnabled,
+    settings.voiceCallEnabled,
+    settings.voiceGender,
+    settings.voiceURI,
+    settings.voiceRate,
+    settings.voicePitch,
+    settings.alertSoundEffect,
+    settings.alertSoundVolume,
+    hasInteracted
+  ]);
 
   useEffect(() => {
     const handleInteraction = () => {
@@ -4742,6 +5783,22 @@ function AppContent() {
     staleTime: 60000,
   });
 
+  useQuery({
+    queryKey: ['call-logs-cache'],
+    queryFn: async () => {
+      try {
+        const q = query(collection(db, 'call_logs'), orderBy('timestamp', 'desc'));
+        const snapshot = await getDocs(q);
+        const items = snapshot.docs.map(doc => doc.data() as CallLogItem);
+        setCallLogs(items);
+        return items;
+      } catch {
+        return [];
+      }
+    },
+    staleTime: 60000,
+  });
+
   // Firestore Real-time Sync: Queue
   useEffect(() => {
     setIsLoadingQueue(true);
@@ -4774,6 +5831,18 @@ function AppContent() {
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'history');
       setIsLoadingHistory(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Firestore Real-time Sync: Call Logs (Produtividade & Tempo Médio)
+  useEffect(() => {
+    const q = query(collection(db, 'call_logs'), orderBy('timestamp', 'desc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const items = snapshot.docs.map(doc => doc.data() as CallLogItem);
+      setCallLogs(items);
+    }, () => {
+      // Silencioso em caso de permissão restrita para visitantes
     });
     return () => unsubscribe();
   }, []);
@@ -5666,6 +6735,7 @@ function AppContent() {
           ITEMS_PER_PAGE={ITEMS_PER_PAGE}
           speak={speak}
           onHelpClick={() => setShowHelpModal(true)}
+          callLogs={callLogs}
         />
         </>
       )}
