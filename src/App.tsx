@@ -62,7 +62,8 @@ import {
   Play,
   Bell,
   Music,
-  Radio
+  Radio,
+  PauseCircle
 } from 'lucide-react';
 import html2pdf from 'html2pdf.js';
 import * as XLSX from 'xlsx';
@@ -147,6 +148,13 @@ interface AppSettings {
   publicShuffleEnabled?: boolean;
   publicShuffleStartTime?: string;
   publicShuffleEndTime?: string;
+  waitingCardEnabled?: boolean;
+  lotteryStandbyMode?: boolean;
+  waitingCardTitle?: string;
+  waitingCardSubtitle?: string;
+  waitingCardMessage?: string;
+  waitingCardBgImage?: string;
+  waitingCardCountdown?: string;
 }
 
 export type AlertSoundType = 'chime' | 'airport' | 'beep' | 'marimba' | 'bell' | 'subtle' | 'none';
@@ -523,6 +531,13 @@ const DEFAULT_SETTINGS: AppSettings = {
   publicShuffleEnabled: false,
   publicShuffleStartTime: '08:00',
   publicShuffleEndTime: '18:00',
+  waitingCardEnabled: false,
+  lotteryStandbyMode: false,
+  waitingCardTitle: 'Aguardando Início do Sorteio',
+  waitingCardSubtitle: 'Sistema de Fila • Em Espera',
+  waitingCardMessage: 'Não há sorteio ativo no momento. Fique atento à contagem regressiva para o próximo horário de atendimento do buffet.',
+  waitingCardBgImage: '',
+  waitingCardCountdown: '11:30',
 };
 
 const ADMIN_EMAILS = ['l2xbrasil@gmail.com', 'sorteioadm@sorteio.com'];
@@ -1539,6 +1554,7 @@ const AdminPanel = ({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isHeroUploading, setIsHeroUploading] = useState(false);
+  const [isWaitingBgUploading, setIsWaitingBgUploading] = useState(false);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [activeCameraType, setActiveCameraType] = useState<'employees' | 'admins' | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -2037,21 +2053,76 @@ const AdminPanel = ({
   };
 
 
+  const compressImage = (file: File, maxWidth = 1920, maxHeight = 1080, quality = 0.82): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (readerEvent) => {
+        const img = new Image();
+        img.onload = () => {
+          let width = img.width;
+          let height = img.height;
+          
+          if (width > maxWidth) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          }
+          if (height > maxHeight) {
+            width = Math.round((width * maxHeight) / height);
+            height = maxHeight;
+          }
+          
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            resolve(readerEvent.target?.result as string);
+            return;
+          }
+          ctx.drawImage(img, 0, 0, width, height);
+          const dataUrl = canvas.toDataURL('image/jpeg', quality);
+          resolve(dataUrl);
+        };
+        img.onerror = (err) => reject(err);
+        img.src = readerEvent.target?.result as string;
+      };
+      reader.onerror = (err) => reject(err);
+      reader.readAsDataURL(file);
+    });
+  };
+
   const uploadFile = async (file: File, type: 'employees' | 'admins' | 'settings') => {
-    // 5MB Limit
-    if (file.size > 5 * 1024 * 1024) {
-      addNotification("Arquivo muito grande. O limite é 5MB.", 'error');
+    // 15MB Limit
+    if (file.size > 15 * 1024 * 1024) {
+      addNotification("Arquivo muito grande. O limite é 15MB.", 'error');
       return null;
     }
 
     try {
-      const storageRef = ref(storage, `${type}/${Date.now()}-${file.name}`);
-      const snapshot = await uploadBytes(storageRef, file);
-      const downloadURL = await getDownloadURL(snapshot.ref);
-      return downloadURL;
+      if (storage) {
+        try {
+          const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9_.-]/g, '_');
+          const storageRef = ref(storage, `${type}/${Date.now()}-${sanitizedFileName}`);
+          const snapshot = await uploadBytes(storageRef, file);
+          const downloadURL = await getDownloadURL(snapshot.ref);
+          if (downloadURL) return downloadURL;
+        } catch (storageErr: any) {
+          console.warn(`Firebase Storage upload for ${type} failed, applying optimized direct image processing:`, storageErr?.message);
+        }
+      }
+
+      // Robust fallback: Compress image locally so upload never fails
+      const isLargeLandscape = type === 'settings';
+      const compressedDataUrl = await compressImage(
+        file, 
+        isLargeLandscape ? 1920 : 600, 
+        isLargeLandscape ? 1080 : 600, 
+        0.82
+      );
+      return compressedDataUrl;
     } catch (error: any) {
       console.error(`Error uploading to ${type}:`, error);
-      addNotification("Erro ao fazer upload da imagem.", 'error', error.message);
+      addNotification("Erro ao processar a imagem. Tente outro arquivo.", 'error', error.message);
       return null;
     }
   };
@@ -2067,6 +2138,7 @@ const AdminPanel = ({
       addNotification("Foto do administrador carregada!", 'success');
     }
     setIsAdminUploading(false);
+    e.target.value = '';
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement> | File) => {
@@ -2080,6 +2152,9 @@ const AdminPanel = ({
       addNotification("Foto carregada com sucesso!", 'success');
     }
     setIsUploading(false);
+    if (!(e instanceof File) && e.target) {
+      e.target.value = '';
+    }
   };
 
   const handleHeroBackgroundUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -2087,12 +2162,43 @@ const AdminPanel = ({
     if (!file) return;
 
     setIsHeroUploading(true);
-    const url = await uploadFile(file, 'settings');
-    if (url) {
-      setTempSettings({ ...tempSettings, heroBackgroundImage: url });
-      addNotification("Imagem de fundo carregada!", 'success');
+    try {
+      const url = await uploadFile(file, 'settings');
+      if (url) {
+        const updated = { ...tempSettings, heroBackgroundImage: url };
+        setTempSettings(updated);
+        await onUpdateSettings(updated);
+        addNotification("Imagem de fundo carregada e salva com sucesso!", 'success');
+      }
+    } catch (err: any) {
+      console.error('Error in hero background upload:', err);
+      addNotification("Erro ao processar imagem de fundo.", 'error', err?.message);
+    } finally {
+      setIsHeroUploading(false);
+      e.target.value = '';
     }
-    setIsHeroUploading(false);
+  };
+
+  const handleWaitingBackgroundUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsWaitingBgUploading(true);
+    try {
+      const url = await uploadFile(file, 'settings');
+      if (url) {
+        const updated = { ...tempSettings, waitingCardBgImage: url };
+        setTempSettings(updated);
+        await onUpdateSettings(updated);
+        addNotification("Imagem de fundo do card de espera carregada e salva!", 'success');
+      }
+    } catch (err: any) {
+      console.error('Error in waiting background upload:', err);
+      addNotification("Erro ao processar imagem de fundo do card de espera.", 'error', err?.message);
+    } finally {
+      setIsWaitingBgUploading(false);
+      e.target.value = '';
+    }
   };
 
   const handleShuffleClick = async () => {
@@ -3369,6 +3475,95 @@ const AdminPanel = ({
                   </div>
                 </div>
               </div>
+
+              {/* Modo de Espera / Standby Control Card */}
+              <div className="lg:col-span-12 space-y-4">
+                <div className="flex items-center justify-between px-4">
+                  <div className="flex items-center gap-4">
+                    <div className="w-1.5 h-6 bg-amber-500 rounded-full shadow-[0_0_12px_rgba(245,158,11,0.8)]" />
+                    <h3 className="text-[12px] font-black uppercase tracking-[0.4em] text-white">Estado do Sorteio e Card de Espera</h3>
+                  </div>
+                  <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full border ${
+                    settings.lotteryStandbyMode || history.length === 0
+                      ? 'text-amber-300 bg-amber-500/10 border-amber-500/30'
+                      : 'text-green-300 bg-green-500/10 border-green-500/30'
+                  }`}>
+                    {settings.lotteryStandbyMode ? 'Modo de Espera (Standby)' : history.length === 0 ? 'Sem Sorteio Ativo' : 'Sorteio Ativo em Andamento'}
+                  </span>
+                </div>
+
+                <div className="glass p-8 rounded-[48px] border border-white/10 space-y-6 bg-amber-500/[0.02]">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Toggle Standby Mode */}
+                    <div className="flex items-center justify-between p-6 bg-white/5 rounded-3xl border border-white/5">
+                      <div className="flex items-center gap-4">
+                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${
+                          settings.lotteryStandbyMode 
+                            ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/30' 
+                            : 'bg-white/5 text-white/40'
+                        }`}>
+                          <PauseCircle size={24} />
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-black uppercase tracking-tight text-white">Colocar em Modo de Espera</h4>
+                          <p className="text-white/40 text-[10px] font-bold">Pausa o sorteio ativo e aciona a exibição do Card de Espera na TV/Dashboard</p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const newStandby = !settings.lotteryStandbyMode;
+                          onUpdateSettings({ ...settings, lotteryStandbyMode: newStandby });
+                          addNotification(newStandby ? 'Modo de espera ativado.' : 'Sorteio retornado ao modo ativo.', 'info');
+                        }}
+                        className={`relative inline-flex h-8 w-14 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                          settings.lotteryStandbyMode ? 'bg-amber-500' : 'bg-white/10'
+                        }`}
+                      >
+                        <span
+                          className={`pointer-events-none inline-block h-7 w-7 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                            settings.lotteryStandbyMode ? 'translate-x-6' : 'translate-x-0'
+                          }`}
+                        />
+                      </button>
+                    </div>
+
+                    {/* Toggle Waiting Card Enabled */}
+                    <div className="flex items-center justify-between p-6 bg-white/5 rounded-3xl border border-white/5">
+                      <div className="flex items-center gap-4">
+                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${
+                          settings.waitingCardEnabled 
+                            ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' 
+                            : 'bg-white/5 text-white/40'
+                        }`}>
+                          <Timer size={24} />
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-black uppercase tracking-tight text-white">Habilitar Card de Espera</h4>
+                          <p className="text-white/40 text-[10px] font-bold">Exibe o card com contagem 24h quando não houver sorteio ativo</p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const newEnabled = !settings.waitingCardEnabled;
+                          onUpdateSettings({ ...settings, waitingCardEnabled: newEnabled });
+                          addNotification(newEnabled ? 'Card de espera habilitado na tela inicial.' : 'Card de espera desabilitado.', 'info');
+                        }}
+                        className={`relative inline-flex h-8 w-14 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                          settings.waitingCardEnabled ? 'bg-amber-500' : 'bg-white/10'
+                        }`}
+                      >
+                        <span
+                          className={`pointer-events-none inline-block h-7 w-7 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                            settings.waitingCardEnabled ? 'translate-x-6' : 'translate-x-0'
+                          }`}
+                        />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </AdminTabLoader>
         )}
@@ -4051,7 +4246,19 @@ const AdminPanel = ({
                             <div className="w-full h-full flex items-center justify-center"><ImageIcon size={40} className="text-white/10" /></div>
                           )}
                           <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                            <button onClick={() => setTempSettings({ ...tempSettings, heroBackgroundImage: '' })} className="w-10 h-10 rounded-xl bg-red-500 text-white flex items-center justify-center hover:scale-110 transition-all"><Trash2 size={18} /></button>
+                            <button 
+                              type="button"
+                              onClick={async () => {
+                                const updated = { ...tempSettings, heroBackgroundImage: '' };
+                                setTempSettings(updated);
+                                await onUpdateSettings(updated);
+                                addNotification('Imagem de fundo removida.', 'info');
+                              }} 
+                              className="w-10 h-10 rounded-xl bg-red-500 text-white flex items-center justify-center hover:scale-110 transition-all shadow-lg"
+                              title="Remover Imagem"
+                            >
+                              <Trash2 size={18} />
+                            </button>
                           </div>
                         </div>
                         <div className="flex-1 space-y-4">
@@ -4086,6 +4293,183 @@ const AdminPanel = ({
                         <label className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-4">Descrição do Card</label>
                         <textarea rows={3} value={tempSettings.heroDescription || ''} onChange={(e) => setTempSettings({...tempSettings, heroDescription: e.target.value})} className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white/60 focus:outline-none focus:ring-2 focus:ring-brand-primary/20 transition-all resize-none font-medium" />
                       </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Waiting Card (Card de Espera / Standby) Settings */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between px-4">
+                    <div className="flex items-center gap-4">
+                      <div className="w-1.5 h-6 bg-amber-500 rounded-full shadow-[0_0_12px_rgba(245,158,11,0.8)]" />
+                      <h3 className="text-[12px] font-black uppercase tracking-[0.4em] text-white">Card de Espera (Sem Sorteio Ativo)</h3>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full border ${
+                        tempSettings.lotteryStandbyMode || history.length === 0
+                          ? 'text-amber-300 bg-amber-500/10 border-amber-500/30'
+                          : 'text-green-300 bg-green-500/10 border-green-500/30'
+                      }`}>
+                        {tempSettings.lotteryStandbyMode ? 'Modo de Espera Ativo' : history.length === 0 ? 'Sem Sorteio (Vazio)' : 'Sorteio em Andamento'}
+                      </span>
+                      <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full border ${
+                        tempSettings.waitingCardEnabled 
+                          ? 'text-amber-300 bg-amber-500/10 border-amber-500/30' 
+                          : 'text-white/40 bg-white/5 border-white/10'
+                      }`}>
+                        {tempSettings.waitingCardEnabled ? 'Card Habilitado' : 'Card Desativado'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="glass p-8 rounded-[48px] border border-white/10 space-y-8">
+                    {/* Toggle Ativar/Desativar Card de Espera */}
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-6 bg-white/5 rounded-3xl border border-white/5">
+                      <div className="flex items-center gap-4">
+                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${
+                          tempSettings.waitingCardEnabled 
+                            ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/30' 
+                            : 'bg-white/5 text-white/40'
+                        }`}>
+                          <Timer size={24} />
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-black uppercase tracking-tight text-white">Exibir Card de Espera no Dashboard</h4>
+                          <p className="text-white/40 text-[10px] font-bold">Quando ativado, este card será exibido exclusivamente quando não houver sorteio ativo (histórico vazio ou modo de espera)</p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setTempSettings({ ...tempSettings, waitingCardEnabled: !tempSettings.waitingCardEnabled })}
+                        className={`relative inline-flex h-8 w-14 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                          tempSettings.waitingCardEnabled ? 'bg-amber-500' : 'bg-white/10'
+                        }`}
+                      >
+                        <span
+                          className={`pointer-events-none inline-block h-7 w-7 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                            tempSettings.waitingCardEnabled ? 'translate-x-6' : 'translate-x-0'
+                          }`}
+                        />
+                      </button>
+                    </div>
+
+                    {/* Toggle Modo de Espera do Sorteio (Standby Manual) */}
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-6 bg-amber-500/5 rounded-3xl border border-amber-500/10">
+                      <div className="flex items-center gap-4">
+                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${
+                          tempSettings.lotteryStandbyMode 
+                            ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30 shadow-lg shadow-amber-500/20' 
+                            : 'bg-white/5 text-white/40'
+                        }`}>
+                          <PauseCircle size={24} />
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-black uppercase tracking-tight text-white">Modo de Espera Manual (Standby)</h4>
+                          <p className="text-white/40 text-[10px] font-bold">Força o sistema para o estado de espera mesmo com sorteios anteriores registrados no histórico</p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setTempSettings({ ...tempSettings, lotteryStandbyMode: !tempSettings.lotteryStandbyMode })}
+                        className={`relative inline-flex h-8 w-14 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                          tempSettings.lotteryStandbyMode ? 'bg-amber-500' : 'bg-white/10'
+                        }`}
+                      >
+                        <span
+                          className={`pointer-events-none inline-block h-7 w-7 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                            tempSettings.lotteryStandbyMode ? 'translate-x-6' : 'translate-x-0'
+                          }`}
+                        />
+                      </button>
+                    </div>
+
+                    {/* Imagem de Fundo do Card de Espera */}
+                    <div className="space-y-3">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-4">Imagem de Fundo do Card de Espera</label>
+                      <div className="flex flex-col md:flex-row gap-6">
+                        <div className="w-full md:w-64 h-40 rounded-[32px] bg-white/5 border border-white/10 overflow-hidden relative group shrink-0 shadow-inner">
+                          {tempSettings.waitingCardBgImage ? (
+                            <img src={tempSettings.waitingCardBgImage} alt="Preview" className="w-full h-full object-cover" />
+                          ) : tempSettings.heroBackgroundImage ? (
+                            <img src={tempSettings.heroBackgroundImage} alt="Preview Principal" className="w-full h-full object-cover opacity-50" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center"><ImageIcon size={40} className="text-white/10" /></div>
+                          )}
+                          {tempSettings.waitingCardBgImage && (
+                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                              <button 
+                                type="button"
+                                onClick={async () => {
+                                  const updated = { ...tempSettings, waitingCardBgImage: '' };
+                                  setTempSettings(updated);
+                                  await onUpdateSettings(updated);
+                                  addNotification('Imagem de fundo do card de espera removida.', 'info');
+                                }} 
+                                className="w-10 h-10 rounded-xl bg-red-500 text-white flex items-center justify-center hover:scale-110 transition-all shadow-lg"
+                                title="Remover Imagem"
+                              >
+                                <Trash2 size={18} />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex-1 space-y-4">
+                          <p className="text-[11px] text-white/40 leading-relaxed font-medium">Defina uma imagem exclusiva de fundo para o modo de espera do almoço ou buffet.</p>
+                          <label className="w-full flex items-center justify-center h-16 bg-white/5 border-2 border-white/10 border-dashed rounded-3xl hover:bg-white/10 hover:border-amber-500/50 cursor-pointer transition-all group">
+                             <div className="flex items-center gap-3 text-white/40 text-[10px] font-black uppercase tracking-widest group-hover:text-amber-400">
+                               <Upload size={18} />
+                               {isWaitingBgUploading ? 'Enviando...' : 'Carregar Imagem de Fundo do Card de Espera'}
+                             </div>
+                             <input type="file" accept="image/*" onChange={handleWaitingBackgroundUpload} className="hidden" />
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-white/5">
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-4">Emblema Superior / Tag</label>
+                        <input 
+                          type="text" 
+                          value={tempSettings.waitingCardSubtitle || ''} 
+                          placeholder="Ex: SISTEMA DE FILA • EM ESPERA"
+                          onChange={(e) => setTempSettings({...tempSettings, waitingCardSubtitle: e.target.value})} 
+                          className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-amber-300 focus:outline-none focus:ring-2 focus:ring-amber-500/20 transition-all font-black uppercase tracking-widest text-xs" 
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-4">Horário Alvo da Contagem Regressiva (Formato 24 Horas)</label>
+                        <input 
+                          type="time" 
+                          value={tempSettings.waitingCardCountdown || '11:30'} 
+                          onChange={(e) => setTempSettings({...tempSettings, waitingCardCountdown: e.target.value})} 
+                          className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 transition-all font-black text-base" 
+                        />
+                        <span className="text-[9px] text-white/30 font-medium ml-4">Formato 24h: O cronômetro regressivo calculará automaticamente o tempo restante até este horário.</span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-4">Título Principal da Mensagem de Espera</label>
+                      <input 
+                        type="text" 
+                        value={tempSettings.waitingCardTitle || ''} 
+                        placeholder="Ex: Aguardando Início do Sorteio"
+                        onChange={(e) => setTempSettings({...tempSettings, waitingCardTitle: e.target.value})} 
+                        className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 transition-all font-bold" 
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-4">Mensagem de Espera / Orientações aos Funcionários</label>
+                      <textarea 
+                        rows={3} 
+                        value={tempSettings.waitingCardMessage || ''} 
+                        placeholder="Ex: Não há sorteio ativo no momento. Fique atento à contagem regressiva para o próximo horário de atendimento do buffet."
+                        onChange={(e) => setTempSettings({...tempSettings, waitingCardMessage: e.target.value})} 
+                        className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white/70 focus:outline-none focus:ring-2 focus:ring-amber-500/20 transition-all resize-none font-medium" 
+                      />
                     </div>
                   </div>
                 </div>
@@ -4953,6 +5337,138 @@ const HeroCard = ({ queueCount, settings, calledEmployee, isLastCalled, currentQ
       
       <div className="absolute -bottom-12 -right-12 w-48 md:w-64 h-48 md:h-64 bg-brand-primary/10 rounded-full blur-3xl" />
       <div className="absolute -top-12 -left-12 w-32 md:w-48 h-32 md:h-48 bg-brand-secondary/5 rounded-full blur-3xl" />
+    </motion.div>
+  );
+};
+
+const WaitingCard = ({ settings }: { settings: AppSettings }) => {
+  const [time, setTime] = useState(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+  const [timeLeft, setTimeLeft] = useState({ hours: 0, minutes: 0, seconds: 0 });
+
+  useEffect(() => {
+    const calculateCountdown = () => {
+      const now = new Date();
+      setTime(now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+
+      // Target time in 24h format (e.g. "11:30" or "12:00")
+      const targetTimeStr = settings.waitingCardCountdown || settings.lotteryTime || '11:30';
+      const parts = targetTimeStr.split(':').map(val => parseInt(val, 10) || 0);
+      const targetHours = parts[0] || 0;
+      const targetMinutes = parts[1] || 0;
+
+      const target = new Date(now);
+      target.setHours(targetHours, targetMinutes, 0, 0);
+
+      // If the target time has already passed today, calculate until that time tomorrow (24h format countdown)
+      if (target.getTime() <= now.getTime()) {
+        target.setDate(target.getDate() + 1);
+      }
+
+      const diffMs = target.getTime() - now.getTime();
+      const totalSeconds = Math.max(0, Math.floor(diffMs / 1000));
+      const hours = Math.floor(totalSeconds / 3600);
+      const minutes = Math.floor((totalSeconds % 3600) / 60);
+      const seconds = totalSeconds % 60;
+
+      setTimeLeft({ hours, minutes, seconds });
+    };
+
+    calculateCountdown();
+    const interval = setInterval(calculateCountdown, 1000);
+    return () => clearInterval(interval);
+  }, [settings.waitingCardCountdown, settings.lotteryTime]);
+
+  const bgImage = settings.waitingCardBgImage || settings.heroBackgroundImage;
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      layout
+      className="mx-4 md:mx-6 p-6 md:p-12 rounded-[32px] md:rounded-[40px] bg-brand-card relative overflow-hidden hero-gradient border border-amber-500/20 shadow-2xl"
+      style={bgImage ? {
+        backgroundImage: `linear-gradient(to right, rgba(10, 15, 12, 0.95), rgba(10, 15, 12, 0.65)), url(${bgImage})`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center'
+      } : {}}
+    >
+      <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-8">
+        <div className="flex-1 space-y-5">
+          <div className="flex flex-wrap items-center gap-3 mb-2">
+            <span className="px-3.5 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[9px] md:text-[10px] font-black uppercase tracking-[0.3em] flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+              {settings.waitingCardSubtitle || 'SISTEMA DE FILA • EM ESPERA'}
+            </span>
+            <span className="text-[9px] md:text-[10px] font-bold text-white/40 uppercase tracking-widest flex items-center gap-1.5">
+              <Clock size={12} className="text-amber-400" />
+              24H: {time}
+            </span>
+          </div>
+
+          <div className="space-y-2">
+            <h2 className="text-3xl md:text-5xl font-black uppercase tracking-tight text-white leading-tight">
+              {settings.waitingCardTitle || 'Aguardando Início do Sorteio'}
+            </h2>
+            <p className="text-white/70 text-xs md:text-sm font-medium leading-relaxed max-w-xl">
+              {settings.waitingCardMessage || 'Não há sorteio ativo no momento. Fique atento à contagem regressiva para o próximo horário de atendimento do buffet.'}
+            </p>
+          </div>
+
+          {/* Quick Badges */}
+          <div className="flex flex-wrap items-center gap-3 pt-2">
+            <div className="px-4 py-2.5 rounded-2xl glass border border-white/10 flex items-center gap-2.5">
+              <Timer size={16} className="text-amber-400" />
+              <span className="text-[10px] font-black uppercase tracking-widest text-white/80">
+                Horário Previsto: <span className="text-amber-300 font-black">{settings.waitingCardCountdown || settings.lotteryTime || '11:30'}</span>
+              </span>
+            </div>
+            {settings.downloadUrl && (
+              <a 
+                href={settings.downloadUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-4 py-2.5 rounded-2xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 flex items-center gap-2 text-[10px] font-black uppercase tracking-widest transition-all shadow-lg"
+              >
+                <Download size={14} />
+                {settings.downloadFileName || 'Baixar App'}
+              </a>
+            )}
+          </div>
+        </div>
+
+        {/* 24-hour Countdown Display */}
+        <div className="flex-shrink-0 bg-black/50 backdrop-blur-xl p-6 md:p-8 rounded-[32px] border border-amber-500/30 shadow-2xl relative overflow-hidden text-center">
+          <div className="absolute -top-10 -right-10 w-28 h-28 bg-amber-500/10 rounded-full blur-2xl pointer-events-none" />
+          <span className="text-[9px] font-black uppercase tracking-[0.3em] text-amber-400 block mb-4">
+            Contagem Regressiva (24h)
+          </span>
+
+          <div className="flex items-center justify-center gap-3 md:gap-4">
+            {[
+              { label: 'Horas', value: timeLeft.hours },
+              { label: 'Minutos', value: timeLeft.minutes },
+              { label: 'Segundos', value: timeLeft.seconds }
+            ].map((unit, idx) => (
+              <div key={idx} className="flex flex-col items-center gap-1.5 min-w-[56px] md:min-w-[68px]">
+                <div className="w-full aspect-square md:w-20 md:h-20 rounded-2xl bg-white/5 border border-amber-500/20 backdrop-blur-md flex items-center justify-center shadow-lg">
+                  <span className="text-2xl md:text-4xl font-black text-amber-300 font-mono leading-none">
+                    {String(unit.value).padStart(2, '0')}
+                  </span>
+                </div>
+                <span className="text-[8px] font-black text-white/40 uppercase tracking-[0.2em]">{unit.label}</span>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-5 pt-4 border-t border-white/10 flex items-center justify-center gap-2 text-[9px] font-bold text-white/50 uppercase tracking-widest">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
+            Atualizado em Tempo Real
+          </div>
+        </div>
+      </div>
+
+      <div className="absolute -bottom-12 -right-12 w-48 md:w-64 h-48 md:h-64 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute -top-12 -left-12 w-32 md:w-48 h-32 md:h-48 bg-brand-primary/10 rounded-full blur-3xl pointer-events-none" />
     </motion.div>
   );
 };
@@ -6285,7 +6801,8 @@ function AppContent() {
         endOfRoundPosition: activeEmployees.length,
         currentCallPosition: 1,
         lastCalledEmployeeId: null,
-        lastCalledTimestamp: null
+        lastCalledTimestamp: null,
+        lotteryStandbyMode: false
       } as AppSettings;
 
       await setDoc(doc(db, 'settings', 'global'), updateData);
@@ -6615,8 +7132,9 @@ function AppContent() {
     });
 
   const isLotteryActive = useMemo(() => {
-    return (settings.endOfRoundPosition || 0) > 0 && queue.some(e => e.isActive && e.position > 0) && history.length > 0;
-  }, [settings.endOfRoundPosition, queue, history]);
+    if (settings.lotteryStandbyMode) return false;
+    return history.length > 0 && queue.some(e => e.isActive && e.position > 0) && (settings.endOfRoundPosition || 0) > 0;
+  }, [settings.lotteryStandbyMode, settings.endOfRoundPosition, queue, history]);
 
   if (!isAuthReady || isLoadingSettings) {
     return <SystemLoader />;
@@ -6783,35 +7301,39 @@ function AppContent() {
             <div className="space-y-8">
               <div className="space-y-4">
                 {!isAuthenticated && (
-                  <HeroCard 
-                    queueCount={queue.filter(e => e.isActive).length} 
-                    settings={settings} 
-                    calledEmployee={showCallPopup ? calledEmployeeData : null}
-                    isLastCalled={showCallPopup && calledEmployeeData ? queue.filter(e => e.isActive).every(e => e.position <= calledEmployeeData.position) : false}
-                    currentQueue={queue}
-                    onShuffle={() => handleShuffle('manual')}
-                  />
+                  !isLotteryActive && settings.waitingCardEnabled ? (
+                    <WaitingCard settings={settings} />
+                  ) : (
+                    <HeroCard 
+                      queueCount={queue.filter(e => e.isActive).length} 
+                      settings={settings} 
+                      calledEmployee={showCallPopup ? calledEmployeeData : null}
+                      isLastCalled={showCallPopup && calledEmployeeData ? queue.filter(e => e.isActive).every(e => e.position <= calledEmployeeData.position) : false}
+                      currentQueue={queue}
+                      onShuffle={() => handleShuffle('manual')}
+                    />
+                  )
                 )}
-                
-
               </div>
 
-              <div className="px-4 md:px-0">
-                <LotteryCountdownCard settings={settings} />
-              </div>
+              {!(!isLotteryActive && settings.waitingCardEnabled) && (
+                <div className="px-4 md:px-0">
+                  <LotteryCountdownCard settings={settings} />
+                </div>
+              )}
             </div>
 
             
             <div className="flex justify-center gap-4 px-4 md:px-0 mt-6">
               <button 
-                onClick={() => setPublicTab('current')}
+                onClick={() => setPublicTab(publicTab === 'current' ? null : 'current')}
                 className={`flex-1 md:flex-none px-6 py-4 rounded-[24px] text-[10px] md:text-xs font-black uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-3 ${publicTab === 'current' ? 'bg-brand-secondary text-brand-bg shadow-lg shadow-brand-secondary/20 scale-105 z-10' : 'bg-white/5 text-white/40 hover:bg-white/10'}`}
               >
                 <Target size={16} />
                 Sorteio Atual
               </button>
               <button 
-                onClick={() => setPublicTab('history')}
+                onClick={() => setPublicTab(publicTab === 'history' ? null : 'history')}
                 className={`flex-1 md:flex-none px-6 py-4 rounded-[24px] text-[10px] md:text-xs font-black uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-3 ${publicTab === 'history' ? 'bg-brand-secondary text-brand-bg shadow-lg shadow-brand-secondary/20 scale-105 z-10' : 'bg-white/5 text-white/40 hover:bg-white/10'}`}
               >
                 <History size={16} />
