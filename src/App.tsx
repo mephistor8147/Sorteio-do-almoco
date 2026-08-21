@@ -954,38 +954,39 @@ const HelpManualModal = ({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-brand-bg/90 backdrop-blur-md z-[200] flex items-center justify-center p-4 overflow-y-auto"
+      className="fixed inset-0 bg-brand-bg/90 backdrop-blur-md z-[200] flex items-center justify-center p-2 sm:p-4 md:p-6 overflow-y-auto"
     >
       <motion.div 
         initial={{ scale: 0.95, y: 20 }}
         animate={{ scale: 1, y: 0 }}
         exit={{ scale: 0.95, y: 20 }}
-        className="glass w-full max-w-2xl rounded-[40px] border border-white/10 flex flex-col max-h-[90vh] shadow-2xl relative overflow-hidden bg-brand-bg/95"
+        className="glass w-full max-w-full sm:max-w-xl md:max-w-2xl lg:max-w-3xl rounded-3xl sm:rounded-[36px] md:rounded-[40px] border border-white/10 flex flex-col max-h-[94vh] sm:max-h-[88vh] shadow-2xl relative overflow-hidden bg-brand-bg/95"
       >
         {/* Header */}
-        <div className="p-6 md:p-8 border-b border-white/5 relative">
+        <div className="p-4 sm:p-6 md:p-8 border-b border-white/5 relative">
           <button 
+            type="button"
             onClick={onClose}
-            className="absolute top-6 right-6 w-10 h-10 rounded-full bg-white/5 hover:bg-white/10 text-white flex items-center justify-center transition-all active:scale-95 border border-white/5"
-            title="Fechar"
+            className="absolute top-4 right-4 sm:top-6 sm:right-6 w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white/5 hover:bg-white/10 text-white flex items-center justify-center transition-all active:scale-95 border border-white/5 z-10"
+            title="Fechar Manual"
           >
             <X size={18} />
           </button>
           
-          <div className="flex items-center gap-3 mb-2">
-            <div className="w-10 h-10 bg-brand-secondary/10 rounded-2xl flex items-center justify-center text-brand-secondary">
+          <div className="flex items-center gap-3 pr-10 sm:pr-12 mb-2">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 bg-brand-secondary/10 rounded-xl sm:rounded-2xl flex items-center justify-center text-brand-secondary shrink-0">
               <HelpCircle size={20} />
             </div>
-            <div>
-              <h3 className="text-xl md:text-2xl font-black uppercase tracking-tight text-white leading-none">Manual do Sistema</h3>
-              <p className="text-white/40 text-[9px] md:text-[10px] font-black uppercase tracking-widest mt-1">Guia de Instruções e Boas Práticas</p>
+            <div className="min-w-0">
+              <h3 className="text-lg sm:text-2xl font-black uppercase tracking-tight text-white leading-none truncate">Manual do Sistema</h3>
+              <p className="text-white/40 text-[8.5px] sm:text-[10px] font-black uppercase tracking-widest mt-1 truncate">Guia de Instruções e Boas Práticas</p>
             </div>
           </div>
           
           {/* Access Level Tag */}
-          <div className="mt-4 flex items-center gap-2 bg-white/[0.02] border border-white/5 rounded-2xl p-3">
-            <span className="text-[9px] font-black uppercase tracking-widest text-white/40">Seu nível de acesso atual:</span>
-            <span className={`px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest border shrink-0 ${
+          <div className="mt-3 sm:mt-4 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 bg-white/[0.02] border border-white/5 rounded-xl sm:rounded-2xl p-2.5 sm:p-3">
+            <span className="text-[8.5px] sm:text-[9px] font-black uppercase tracking-widest text-white/40">Seu nível de acesso atual:</span>
+            <span className={`px-2.5 sm:px-3 py-1 rounded-full text-[8px] sm:text-[8.5px] font-black uppercase tracking-widest border shrink-0 ${
               currentUserRole === 'admin' 
                 ? 'bg-red-500/10 text-red-400 border-red-500/20' 
                 : currentUserRole === 'coordinator' 
@@ -997,94 +998,96 @@ const HelpManualModal = ({
           </div>
         </div>
 
-        {/* Tab Selection */}
-        <div className="px-6 md:px-8 pt-4 flex gap-1.5 overflow-x-auto no-scrollbar border-b border-white/5 bg-white/[0.01]">
+        {/* Responsive Tab Selection Grid */}
+        <div className="px-3 sm:px-6 md:px-8 pt-2 sm:pt-4 grid grid-cols-3 gap-1 sm:gap-2 border-b border-white/5 bg-white/[0.01]">
           {[
-            { id: 'common', label: 'Comum / Fila', icon: <Users size={12} />, roleText: 'Todos os Usuários' },
-            { id: 'coordinator', label: 'Coordenador', icon: <UserIcon size={12} />, roleText: 'Operador de Sorteio' },
-            { id: 'admin', label: 'Administrador', icon: <Shield size={12} />, roleText: 'Controles de Sistema' }
+            { id: 'common', label: 'Comum / Fila', shortLabel: 'Fila', icon: <Users size={13} />, roleText: 'Todos os Usuários' },
+            { id: 'coordinator', label: 'Coordenador', shortLabel: 'Coord.', icon: <UserIcon size={13} />, roleText: 'Operador de Sorteio' },
+            { id: 'admin', label: 'Administrador', shortLabel: 'Admin', icon: <Shield size={13} />, roleText: 'Controles de Sistema' }
           ].map((tab) => {
             const isActive = activeTab === tab.id;
             return (
               <button
+                type="button"
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
-                className={`flex-1 min-w-[130px] flex flex-col items-center gap-1.5 px-4 py-3 rounded-t-2xl transition-all relative ${
+                className={`flex flex-col items-center justify-center gap-1 sm:gap-1.5 py-2.5 sm:py-3 px-1 sm:px-3 rounded-t-xl sm:rounded-t-2xl transition-all relative ${
                   isActive 
-                    ? 'border-t-2 border-brand-secondary bg-white/[0.03] text-brand-secondary' 
-                    : 'text-white/40 hover:text-white/60 hover:bg-white/[0.01]'
+                    ? 'border-t-2 border-brand-secondary bg-white/[0.04] text-brand-secondary' 
+                    : 'text-white/40 hover:text-white/70 hover:bg-white/[0.01]'
                 }`}
               >
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center justify-center gap-1 sm:gap-1.5">
                   {tab.icon}
-                  <span className="text-[10px] font-black uppercase tracking-widest text-inherit whitespace-nowrap">{tab.label}</span>
+                  <span className="text-[8.5px] sm:text-[10px] font-black uppercase tracking-wider sm:tracking-widest whitespace-nowrap hidden xs:inline">{tab.label}</span>
+                  <span className="text-[8.5px] font-black uppercase tracking-wider whitespace-nowrap xs:hidden">{tab.shortLabel}</span>
                 </div>
-                <span className="text-[7px] text-white/30 font-bold uppercase tracking-wider">{tab.roleText}</span>
+                <span className="text-[6.5px] sm:text-[7.5px] text-white/30 font-bold uppercase tracking-tight sm:tracking-wider text-center line-clamp-1">{tab.roleText}</span>
               </button>
             );
           })}
         </div>
 
         {/* Body content */}
-        <div className="flex-1 overflow-y-auto p-6 md:p-8 space-y-6 text-white leading-relaxed custom-scrollbar max-h-[50vh]">
+        <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 md:p-8 space-y-4 sm:space-y-6 text-white leading-relaxed custom-scrollbar">
           {activeTab === 'common' && (
-            <div className="space-y-6">
-              <div className="bg-brand-primary/[0.03] border border-brand-primary/10 rounded-[24px] p-5">
-                <h4 className="text-sm font-black text-white uppercase tracking-wider mb-2 flex items-center gap-2 text-brand-primary">
+            <div className="space-y-4 sm:space-y-6">
+              <div className="bg-brand-primary/[0.04] border border-brand-primary/15 rounded-2xl sm:rounded-[24px] p-4 sm:p-5">
+                <h4 className="text-xs sm:text-sm font-black text-white uppercase tracking-wider mb-1.5 sm:mb-2 flex items-center gap-2 text-brand-primary">
                   <Leaf size={16} /> Bem-vindo ao Sorteio Amazonas
                 </h4>
-                <p className="text-white/70 text-xs leading-relaxed">
+                <p className="text-white/70 text-[11px] sm:text-xs leading-relaxed">
                   Este sistema foi desenvolvido para organizar, automatizar e transmitir a ordem de atendimento e os sorteios de forma totalmente auditável, rápida e integrada.
                 </p>
               </div>
 
-              <div className="space-y-4">
-                <h4 className="text-[11px] font-black uppercase tracking-widest text-brand-secondary flex items-center gap-2">
+              <div className="space-y-3 sm:space-y-4">
+                <h4 className="text-[10px] sm:text-[11px] font-black uppercase tracking-widest text-brand-secondary flex items-center gap-2">
                   <Sparkles size={14} /> Como funciona para Funcionários/Membros?
                 </h4>
                 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-4 space-y-2">
-                    <span className="text-[8px] font-black text-white/40 uppercase tracking-widest block">Passo 01 / Cadastro</span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                  <div className="bg-white/[0.02] border border-white/5 rounded-xl sm:rounded-2xl p-3.5 sm:p-4 space-y-1.5 sm:space-y-2">
+                    <span className="text-[7.5px] sm:text-[8px] font-black text-brand-secondary/80 uppercase tracking-widest block">Passo 01 / Cadastro</span>
                     <h5 className="font-bold text-xs text-white uppercase tracking-tight">Presença Cadastrada</h5>
-                    <p className="text-white/50 text-[11px] leading-relaxed">
+                    <p className="text-white/50 text-[10.5px] sm:text-[11px] leading-relaxed">
                       Seu nome e foto devem ser inseridos pelo Coordenador na lista de presença. Pergunte à coordenação se você já foi inscrito na rodada atual.
                     </p>
                   </div>
 
-                  <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-4 space-y-2">
-                    <span className="text-[8px] font-black text-white/40 uppercase tracking-widest block">Passo 02 / Presença Ativa</span>
+                  <div className="bg-white/[0.02] border border-white/5 rounded-xl sm:rounded-2xl p-3.5 sm:p-4 space-y-1.5 sm:space-y-2">
+                    <span className="text-[7.5px] sm:text-[8px] font-black text-brand-secondary/80 uppercase tracking-widest block">Passo 02 / Presença Ativa</span>
                     <h5 className="font-bold text-xs text-white uppercase tracking-tight">Status na Fila</h5>
-                    <p className="text-white/50 text-[11px] leading-relaxed">
+                    <p className="text-white/50 text-[10.5px] sm:text-[11px] leading-relaxed">
                       Mantenha-se <strong className="text-green-400 font-bold">Ativo</strong> para ser elegível para o próximo sorteio. Se precisar sair mais cedo ou se ausentar, o operador mudará seu status para <strong className="text-red-400 font-bold">Inativo</strong> para não atrasar o fluxo.
                     </p>
                   </div>
 
-                  <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-4 space-y-2">
-                    <span className="text-[8px] font-black text-white/40 uppercase tracking-widest block">Passo 03 / O Sorteio</span>
+                  <div className="bg-white/[0.02] border border-white/5 rounded-xl sm:rounded-2xl p-3.5 sm:p-4 space-y-1.5 sm:space-y-2">
+                    <span className="text-[7.5px] sm:text-[8px] font-black text-brand-secondary/80 uppercase tracking-widest block">Passo 03 / O Sorteio</span>
                     <h5 className="font-bold text-xs text-white uppercase tracking-tight">Embaralhamento Transparente</h5>
-                    <p className="text-white/50 text-[11px] leading-relaxed">
+                    <p className="text-white/50 text-[10.5px] sm:text-[11px] leading-relaxed">
                       Quando o sorteio é disparado pelos operadores, o sistema realiza um embaralhamento simulado em tempo real com todos os membros elegíveis para definir as ordens de chamada.
                     </p>
                   </div>
 
-                  <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-4 space-y-2">
-                    <span className="text-[8px] font-black text-white/40 uppercase tracking-widest block">Passo 04 / Chamadas</span>
+                  <div className="bg-white/[0.02] border border-white/5 rounded-xl sm:rounded-2xl p-3.5 sm:p-4 space-y-1.5 sm:space-y-2">
+                    <span className="text-[7.5px] sm:text-[8px] font-black text-brand-secondary/80 uppercase tracking-widest block">Passo 04 / Chamadas</span>
                     <h5 className="font-bold text-xs text-white uppercase tracking-tight">Anúncio por Voz Integrado</h5>
-                    <p className="text-white/50 text-[11px] leading-relaxed">
+                    <p className="text-white/50 text-[10.5px] sm:text-[11px] leading-relaxed">
                       O painel principal exibirá sua convocação em destaque acompanhada por uma chamada por voz audível do sistema. Fique atento aos alto-falantes!
                     </p>
                   </div>
                 </div>
               </div>
 
-              <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-5 space-y-3">
-                <h4 className="text-[11px] font-black uppercase tracking-widest text-white flex items-center gap-2">
+              <div className="bg-white/[0.02] border border-white/5 rounded-xl sm:rounded-2xl p-4 sm:p-5 space-y-2.5 sm:space-y-3">
+                <h4 className="text-[10px] sm:text-[11px] font-black uppercase tracking-widest text-white flex items-center gap-2">
                   <Clock size={14} className="text-brand-primary" /> Visualização Geral Pública
                 </h4>
-                <ul className="space-y-2 text-[11px] text-white/60 list-disc list-inside">
-                  <li><strong className="text-white">Aba "Sorteio Atual"</strong>: Exibe em tempo real quem é o funcionário selecionado atualmente, a ordem de chamados anterior e a fila de próximos para atendimento.</li>
-                  <li><strong className="text-white">Aba "Histórico"</strong>: Permite conferir todos os rankings acumulados e as ordens de serviço geradas nos sorteios anteriores finalizados.</li>
+                <ul className="space-y-2 text-[10.5px] sm:text-[11px] text-white/60 list-disc list-inside">
+                  <li><strong className="text-white">Aba &quot;Sorteio Atual&quot;</strong>: Exibe em tempo real quem é o funcionário selecionado atualmente, a ordem de chamados anterior e a fila de próximos para atendimento.</li>
+                  <li><strong className="text-white">Aba &quot;Histórico&quot;</strong>: Permite conferir todos os rankings acumulados e as ordens de serviço geradas nos sorteios anteriores finalizados.</li>
                   <li><strong className="text-white">Compartilhamento</strong>: Clique no ícone de compartilhamento ou exportações para baixar os relatórios das ordens de serviço em PDF ou Excel.</li>
                 </ul>
               </div>
@@ -1092,65 +1095,65 @@ const HelpManualModal = ({
           )}
 
           {activeTab === 'coordinator' && (
-            <div className="space-y-6">
-              <div className="bg-blue-500/[0.02] border border-blue-500/10 rounded-[24px] p-5">
-                <h4 className="text-sm font-black text-white uppercase tracking-wider mb-2 flex items-center gap-2 text-blue-400">
+            <div className="space-y-4 sm:space-y-6">
+              <div className="bg-blue-500/[0.03] border border-blue-500/15 rounded-2xl sm:rounded-[24px] p-4 sm:p-5">
+                <h4 className="text-xs sm:text-sm font-black text-white uppercase tracking-wider mb-1.5 sm:mb-2 flex items-center gap-2 text-blue-400">
                   <UserIcon size={16} /> Operador de Fila & Sorteios
                 </h4>
-                <p className="text-white/70 text-xs leading-relaxed">
+                <p className="text-white/70 text-[11px] sm:text-xs leading-relaxed">
                   O Coordenador é o principal gestor de campo. Tem permissões especiais para comandar sorteios casuais, gerenciar a entrada/saída de membros na rodada, pausar/retomar a fila de presença, e desengatar alertas por voz.
                 </p>
               </div>
 
-              <div className="space-y-4">
-                <h4 className="text-[11px] font-black uppercase tracking-widest text-brand-secondary flex items-center gap-2">
+              <div className="space-y-3 sm:space-y-4">
+                <h4 className="text-[10px] sm:text-[11px] font-black uppercase tracking-widest text-brand-secondary flex items-center gap-2">
                   <Zap size={14} /> Atribuições do Coordenador de Fila
                 </h4>
 
-                <div className="space-y-3">
-                  <div className="flex items-start gap-3 bg-white/[0.01] border border-white/5 rounded-2xl p-4">
-                    <div className="w-8 h-8 rounded-xl bg-orange-500/10 text-orange-400 flex items-center justify-center shrink-0">
+                <div className="space-y-2.5 sm:space-y-3">
+                  <div className="flex items-start gap-3 bg-white/[0.01] border border-white/5 rounded-xl sm:rounded-2xl p-3.5 sm:p-4">
+                    <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg sm:rounded-xl bg-orange-500/10 text-orange-400 flex items-center justify-center shrink-0 mt-0.5">
                       <Users size={16} />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <h5 className="font-bold text-xs text-white uppercase tracking-tight">Gerenciamento no Dia a Dia</h5>
-                      <p className="text-white/50 text-[11px] mt-1 leading-relaxed">
+                      <p className="text-white/50 text-[10.5px] sm:text-[11px] mt-1 leading-relaxed">
                         Ative ou desative funcionários à medida que chegam ou se ausentam. Adicione novos na fila instantaneamente. O cálculo de posições é automático com base nas admissões.
                       </p>
                     </div>
                   </div>
 
-                  <div className="flex items-start gap-3 bg-white/[0.01] border border-white/5 rounded-2xl p-4">
-                    <div className="w-8 h-8 rounded-xl bg-purple-500/10 text-purple-400 flex items-center justify-center shrink-0">
+                  <div className="flex items-start gap-3 bg-white/[0.01] border border-white/5 rounded-xl sm:rounded-2xl p-3.5 sm:p-4">
+                    <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg sm:rounded-xl bg-purple-500/10 text-purple-400 flex items-center justify-center shrink-0 mt-0.5">
                       <Dices size={16} />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <h5 className="font-bold text-xs text-white uppercase tracking-tight">Comando de Sorteio</h5>
-                      <p className="text-white/50 text-[11px] mt-1 leading-relaxed">
-                        Dispare o botão "Sorteio" para iniciar a simulação visual e sonora. O sistema escolhe aleatoriamente um membro <strong className="text-green-400 font-bold">Ativo</strong> cadastrado, gera o ID da chamada, aciciona no histórico e emite o áudio.
+                      <p className="text-white/50 text-[10.5px] sm:text-[11px] mt-1 leading-relaxed">
+                        Dispare o botão &quot;Sorteio&quot; para iniciar a simulação visual e sonora. O sistema escolhe aleatoriamente um membro <strong className="text-green-400 font-bold">Ativo</strong> cadastrado, gera o ID da chamada, adiciona no histórico e emite o áudio.
                       </p>
                     </div>
                   </div>
 
-                  <div className="flex items-start gap-3 bg-white/[0.01] border border-white/5 rounded-2xl p-4">
-                    <div className="w-8 h-8 rounded-xl bg-green-500/10 text-green-400 flex items-center justify-center shrink-0">
+                  <div className="flex items-start gap-3 bg-white/[0.01] border border-white/5 rounded-xl sm:rounded-2xl p-3.5 sm:p-4">
+                    <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg sm:rounded-xl bg-green-500/10 text-green-400 flex items-center justify-center shrink-0 mt-0.5">
                       <Volume2 size={16} />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <h5 className="font-bold text-xs text-white uppercase tracking-tight">Controle Operacional de Voz</h5>
-                      <p className="text-white/50 text-[11px] mt-1 leading-relaxed">
+                      <p className="text-white/50 text-[10.5px] sm:text-[11px] mt-1 leading-relaxed">
                         Se a área estiver barulhenta ou em horários restritos, mude o botão de som por voz no topo para <strong className="text-red-400 font-bold">Desativado</strong>. Como coordenador, você pode ligar e desligar esse recurso à vontade nos tablets ou computadores operacionais.
                       </p>
                     </div>
                   </div>
 
-                  <div className="flex items-start gap-3 bg-white/[0.01] border border-white/5 rounded-2xl p-4">
-                    <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center shrink-0">
+                  <div className="flex items-start gap-3 bg-white/[0.01] border border-white/5 rounded-xl sm:rounded-2xl p-3.5 sm:p-4">
+                    <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg sm:rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center shrink-0 mt-0.5">
                       <Settings size={16} />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <h5 className="font-bold text-xs text-white uppercase tracking-tight">Operação Off-line Inteligente</h5>
-                      <p className="text-white/50 text-[11px] mt-1 leading-relaxed">
+                      <p className="text-white/50 text-[10.5px] sm:text-[11px] mt-1 leading-relaxed">
                         Se a rede oscilar ou cair, você pode <strong className="text-amber-400 font-bold">Adicionar Funcionários normalmente</strong>. Eles entrarão em estado de pendência offline com um indicador amarelo. Quando a rede restabelecer, o sistema sincronizará de forma 100% automatizada com o Firestore do Firebase!
                       </p>
                     </div>
@@ -1161,69 +1164,69 @@ const HelpManualModal = ({
           )}
 
           {activeTab === 'admin' && (
-            <div className="space-y-6">
-              <div className="bg-red-500/[0.02] border border-red-500/10 rounded-[24px] p-5">
-                <h4 className="text-sm font-black text-white uppercase tracking-wider mb-2 flex items-center gap-2 text-red-400">
+            <div className="space-y-4 sm:space-y-6">
+              <div className="bg-red-500/[0.03] border border-red-500/15 rounded-2xl sm:rounded-[24px] p-4 sm:p-5">
+                <h4 className="text-xs sm:text-sm font-black text-white uppercase tracking-wider mb-1.5 sm:mb-2 flex items-center gap-2 text-red-400">
                   <Shield size={16} /> Administração Master & Segurança
                 </h4>
-                <p className="text-white/70 text-xs leading-relaxed">
+                <p className="text-white/70 text-[11px] sm:text-xs leading-relaxed">
                   O Administrador possui privilégios ilimitados. É o responsável por gerenciar as contas de coordenadores, restaurar backups do sistema, configurar os perfis globais e customizar a identidade (textos, cabeçalhos, logos, etc.) do aplicativo.
                 </p>
               </div>
 
-              <div className="space-y-4">
-                <h4 className="text-[11px] font-black uppercase tracking-widest text-brand-secondary flex items-center gap-2">
+              <div className="space-y-3 sm:space-y-4">
+                <h4 className="text-[10px] sm:text-[11px] font-black uppercase tracking-widest text-brand-secondary flex items-center gap-2">
                   <Settings size={14} /> Painel Administrativo Exclusivo
                 </h4>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-4 space-y-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                  <div className="bg-white/[0.02] border border-white/5 rounded-xl sm:rounded-2xl p-3.5 sm:p-4 space-y-1.5">
                     <div className="flex items-center gap-2 text-red-400 font-bold text-xs">
                       <UserPlus size={14} />
                       <h5>Gestão de Contas (Admins)</h5>
                     </div>
-                    <p className="text-white/50 text-[10px] leading-relaxed">
+                    <p className="text-white/50 text-[10px] sm:text-[10.5px] leading-relaxed">
                       Cadastre novos Administradores ou Coordenadores no banco, redefina senhas de acesso de forma direta e desative contas imediatamente quando necessário.
                     </p>
                   </div>
 
-                  <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-4 space-y-2">
+                  <div className="bg-white/[0.02] border border-white/5 rounded-xl sm:rounded-2xl p-3.5 sm:p-4 space-y-1.5">
                     <div className="flex items-center gap-2 text-blue-400 font-bold text-xs">
                       <Database size={14} />
                       <h5>Backup & Manutenção</h5>
                     </div>
-                    <p className="text-white/50 text-[10px] leading-relaxed">
+                    <p className="text-white/50 text-[10px] sm:text-[10.5px] leading-relaxed">
                       Visualize a tabela JSON completa das coleções no Firestore. Exclua históricos antigos para resetar o espaço, ou importe planilhas de arquivos XLS e CSV de presença rápida de uma só vez.
                     </p>
                   </div>
 
-                  <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-4 space-y-2">
+                  <div className="bg-white/[0.02] border border-white/5 rounded-xl sm:rounded-2xl p-3.5 sm:p-4 space-y-1.5">
                     <div className="flex items-center gap-2 text-purple-400 font-bold text-xs">
                       <Zap size={14} />
                       <h5>Configuração Global</h5>
                     </div>
-                    <p className="text-white/50 text-[10px] leading-relaxed">
+                    <p className="text-white/50 text-[10px] sm:text-[10.5px] leading-relaxed">
                       Altere o título do topo do app, subtítulos das páginas e slogans. Configure as vozes favoritas do sintetizador de falas (masculinas/femininas) de acordo com o hardware do cliente.
                     </p>
                   </div>
 
-                  <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-4 space-y-2">
+                  <div className="bg-white/[0.02] border border-white/5 rounded-xl sm:rounded-2xl p-3.5 sm:p-4 space-y-1.5">
                     <div className="flex items-center gap-2 text-green-400 font-bold text-xs">
                       <FileIcon size={14} />
                       <h5>Central de Arquivos</h5>
                     </div>
-                    <p className="text-white/50 text-[10px] leading-relaxed">
+                    <p className="text-white/50 text-[10px] sm:text-[10.5px] leading-relaxed">
                       Controle a biblioteca de uploads. Todos os backups de excel, imagens carregadas ou logs ficam listados com tamanhos e atalhos rápidos de download ou expurgo.
                     </p>
                   </div>
                 </div>
               </div>
 
-              <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-5 space-y-2">
-                <h4 className="text-[11px] font-black uppercase tracking-widest text-white flex items-center gap-2">
+              <div className="bg-white/[0.02] border border-white/5 rounded-xl sm:rounded-2xl p-4 sm:p-5 space-y-2">
+                <h4 className="text-[10px] sm:text-[11px] font-black uppercase tracking-widest text-white flex items-center gap-2">
                   <AlertCircle size={14} className="text-red-500" /> Notas de Segurança Crítica
                 </h4>
-                <p className="text-white/50 text-[10px] leading-relaxed">
+                <p className="text-white/50 text-[10px] sm:text-[10.5px] leading-relaxed">
                   Evite compartilhar contas administrativas. Toda modificação de sistema, alteração de banco e exclusão de funcionários ou sorteios atualiza instantaneamente as instâncias do Firestore em todos os tablets e canais transmissores conectados no mesmo projeto.
                 </p>
               </div>
@@ -1232,11 +1235,12 @@ const HelpManualModal = ({
         </div>
 
         {/* Footer */}
-        <div className="p-6 bg-white/[0.01] border-t border-white/5 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <span className="text-[8px] font-black uppercase tracking-[0.2em] text-white/20 font-mono">Suporte Técnico Amazonas v2.1</span>
+        <div className="p-4 sm:p-6 bg-white/[0.01] border-t border-white/5 flex flex-col-reverse sm:flex-row items-center justify-between gap-3 sm:gap-4">
+          <span className="text-[8px] sm:text-[8.5px] font-black uppercase tracking-[0.2em] text-white/30 font-mono text-center sm:text-left">Suporte Técnico Amazonas v2.1</span>
           <button 
+            type="button"
             onClick={onClose}
-            className="w-full sm:w-auto px-8 py-3.5 bg-brand-primary text-white font-black uppercase tracking-widest rounded-2xl shadow-lg transition-all active:scale-95 text-xs"
+            className="w-full sm:w-auto px-6 sm:px-8 py-3 sm:py-3.5 bg-brand-primary hover:bg-brand-primary/90 text-white font-black uppercase tracking-widest rounded-xl sm:rounded-2xl shadow-lg transition-all active:scale-95 text-xs flex items-center justify-center gap-2"
           >
             Fechar Manual
           </button>
